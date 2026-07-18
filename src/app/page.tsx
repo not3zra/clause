@@ -1,46 +1,44 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-type MissionView = "landing" | "wizard" | "student" | "dashboard";
+type View = "landing" | "wizard" | "missions" | "dashboard";
 type Verdict = "idle" | "correct" | "revise" | "appeal";
+type StageId = "surgery" | "sort" | "rewrite";
 
-// This prototype keeps its sample room data local until persistence and AI routes are introduced.
-const stages = [
+type Stage = {
+  id: StageId;
+  title: string;
+  token: string;
+  rule: string;
+  prompt: string;
+  hint: string;
+};
+
+const stages: Stage[] = [
   {
     id: "surgery",
-    label: "Stage 1",
     title: "Sentence Surgery",
-    type: "AI graded correction",
     token: "CASE",
+    rule: "Does the verb agree with the singular collective noun team?",
     prompt: "The team are reviewing the witness notes before lunch.",
-    target: "Subject-verb agreement with collective nouns",
-    accepted: "The team is reviewing the witness notes before lunch.",
-    hint: "Find the verb that belongs to the singular collective noun team.",
+    hint: "Team is a singular collective noun here, so its verb should be singular.",
   },
   {
     id: "sort",
-    label: "Stage 2",
     title: "Evidence Sort",
-    type: "Deterministic classification",
     token: "FILE",
-    prompt: "Sort each evidence card by whether the subject and verb agree.",
-    target: "Singular and plural subject checks",
-    accepted: "4 / 4 evidence cards sorted",
-    hint: "Look for the real subject before judging the verb.",
+    rule: "Find the real subject before deciding whether its verb agrees.",
+    prompt: "Classify each sentence as agreeing or needing revision.",
+    hint: "Ignore prepositional phrases and look for the noun doing the action.",
   },
   {
     id: "rewrite",
-    label: "Stage 3",
     title: "Case File Rewrite",
-    type: "AI graded rewrite",
     token: "OPEN",
-    prompt:
-      "Neither the map nor the notebook were in the drawer, but the clues was nearby.",
-    target: "Compound subjects and nearby distractors",
-    accepted:
-      "Neither the map nor the notebook was in the drawer, but the clues were nearby.",
-    hint: "When neither/nor joins singular nouns, the verb stays singular. Clues is plural.",
+    rule: "Check each linked sentence for the subject that controls its verb.",
+    prompt: "Repair both statements in the case file.",
+    hint: "Neither/nor with singular nouns takes a singular verb; clues is plural.",
   },
 ];
 
@@ -51,691 +49,142 @@ const evidenceCards = [
   { sentence: "The detective and the clerk is checking prints.", answer: "Needs revision" },
 ];
 
-const dashboardRows = [
-  {
-    name: "Aarav Mehta",
-    status: "Escaped with hints",
-    score: "82%",
-    pattern: "Collective noun agreement",
-    appeal: "None",
-  },
-  {
-    name: "Mira Shah",
-    status: "Provisional credit",
-    score: "76%",
-    pattern: "Nearby noun distractors",
-    appeal: "1 awaiting review",
-  },
-  {
-    name: "Kabir Rao",
-    status: "Completed after guidance",
-    score: "61%",
-    pattern: "Neither/nor subjects",
-    appeal: "Resolved",
-  },
+const studentRows = [
+  { name: "Aarav Mehta", roll: "7B-04", status: "Complete", score: "82%", time: "10:14", appeal: "None", mastery: "Secure", detail: "2 hints used. Strong on collective nouns." },
+  { name: "Mira Shah", roll: "7B-12", status: "In progress", score: "76%", time: "08:52", appeal: "1 pending", mastery: "Developing", detail: "Appeal on the compound-subject item." },
+  { name: "Kabir Rao", roll: "7B-19", status: "Complete", score: "61%", time: "13:08", appeal: "Resolved", mastery: "Needs practice", detail: "Needed final guidance on neither/nor agreement." },
 ];
 
-const topics = [
-  "Subject-verb agreement",
-  "Verb tense",
-  "Parts of speech",
-  "Punctuation and run-ons",
+const themes = [
+  { name: "Detective Office", note: "Case files, evidence tags, and cabinet locks.", accent: "Recommended" },
+  { name: "Cursed Castle", note: "Runes, sealed doors, and lost manuscripts.", accent: "" },
+  { name: "Sci-Fi Lab", note: "Keycards, terminals, and system diagnostics.", accent: "" },
 ];
-
-const themes = ["Detective Office", "Cursed Castle", "Sci-Fi Lab"];
 
 export default function Home() {
-  const [view, setView] = useState<MissionView>("landing");
-  const [selectedTopic, setSelectedTopic] = useState(topics[0]);
-  const [selectedTheme, setSelectedTheme] = useState(themes[0]);
-  const [studentAnswer, setStudentAnswer] = useState(stages[0].prompt);
-  const [verdict, setVerdict] = useState<Verdict>("idle");
-  const [hintLevel, setHintLevel] = useState(0);
-  const [sortState, setSortState] = useState<Record<string, string>>({});
-
-  // Only fully correct classifications count toward unlocking the final case file.
-  const sortedCount = useMemo(
-    () =>
-      evidenceCards.filter((card) => sortState[card.sentence] === card.answer)
-        .length,
-    [sortState],
-  );
-
-  function checkAnswer() {
-    const normalized = studentAnswer.toLowerCase().replace(/\s+/g, " ").trim();
-    // Deterministic MVP grading: accept the required agreement repair despite extra sentence text.
-    // A later server-side evaluator will replace this check with structured semantic feedback.
-    if (normalized.includes("team is reviewing")) {
-      setVerdict("correct");
-      return;
-    }
-
-    setVerdict("revise");
-    setHintLevel((level) => Math.min(level + 1, 2));
-  }
-
-  function challengeVerdict() {
-    setVerdict("appeal");
-  }
+  // The MVP keeps navigation and room state local until auth and persistence exist.
+  const [view, setView] = useState<View>("landing");
+  const [wizardStep, setWizardStep] = useState(1);
+  const [theme, setTheme] = useState(themes[0].name);
 
   return (
-    <main className="min-h-screen bg-[#f7f3ea] text-[#211d19]">
-      <div className="border-b border-[#d8ccb8] bg-[#fffaf0]/90 backdrop-blur">
-        <nav className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-8">
-          <button
-            className="flex w-fit items-center gap-3 text-left"
-            onClick={() => setView("landing")}
-            type="button"
-          >
-            <span className="grid h-10 w-10 place-items-center rounded bg-[#23201d] text-sm font-black text-[#f7c948] shadow-sm">
-              C
-            </span>
-            <span>
-              <span className="block text-lg font-black tracking-[0.12em]">
-                CLAUSE
-              </span>
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[#725f46]">
-                Grammar missions
-              </span>
-            </span>
-          </button>
-
-          <div className="flex flex-wrap gap-2 text-sm font-semibold">
-            <button
-              className={navButton(view === "student")}
-              onClick={() => setView("student")}
-              type="button"
-            >
-              Try sample room
-            </button>
-            <button
-              className={navButton(view === "wizard")}
-              onClick={() => setView("wizard")}
-              type="button"
-            >
-              Create room
-            </button>
-            <button
-              className={navButton(view === "dashboard")}
-              onClick={() => setView("dashboard")}
-              type="button"
-            >
-              Demo dashboard
-            </button>
-          </div>
-        </nav>
-      </div>
-
-      {view === "landing" && (
-        <LandingView
-          onCreate={() => setView("wizard")}
-          onSample={() => setView("student")}
-          onDashboard={() => setView("dashboard")}
-        />
-      )}
-
-      {view === "wizard" && (
-        <WizardView
-          selectedTheme={selectedTheme}
-          selectedTopic={selectedTopic}
-          setSelectedTheme={setSelectedTheme}
-          setSelectedTopic={setSelectedTopic}
-          onPreview={() => setView("student")}
-        />
-      )}
-
-      {view === "student" && (
-        <StudentRoom
-          challengeVerdict={challengeVerdict}
-          checkAnswer={checkAnswer}
-          hintLevel={hintLevel}
-          setSortState={setSortState}
-          setStudentAnswer={setStudentAnswer}
-          sortState={sortState}
-          sortedCount={sortedCount}
-          studentAnswer={studentAnswer}
-          verdict={verdict}
-        />
-      )}
-
-      {view === "dashboard" && <DashboardView />}
+    <main className="min-h-screen bg-[#f5f6f8] text-[#172235]">
+      <Header onHome={() => setView("landing")} onTeacher={() => { setView("wizard"); setWizardStep(1); }} />
+      {view === "landing" && <Landing onCreate={() => { setView("wizard"); setWizardStep(1); }} onSample={() => setView("missions")} />}
+      {view === "wizard" && <TeacherWizard step={wizardStep} setStep={setWizardStep} theme={theme} setTheme={setTheme} onPreview={() => setView("missions")} />}
+      {view === "missions" && <MissionPlayer theme={theme} onDashboard={() => setView("dashboard")} />}
+      {view === "dashboard" && <Dashboard />}
     </main>
   );
 }
 
-function LandingView({
-  onCreate,
-  onDashboard,
-  onSample,
-}: {
-  onCreate: () => void;
-  onDashboard: () => void;
-  onSample: () => void;
-}) {
-  return (
-    <>
-      <section className="mx-auto grid max-w-7xl gap-10 px-5 py-10 lg:grid-cols-[1fr_0.92fr] lg:items-center lg:px-8 lg:py-14">
-        <div className="space-y-8">
-          <div className="inline-flex items-center gap-2 rounded border border-[#d8ccb8] bg-[#fffaf0] px-3 py-2 text-sm font-bold text-[#5b4a35]">
-            <span className="h-2 w-2 rounded-full bg-[#1f8a70]" />
-            OpenAI Build Week MVP
-          </div>
-          <div className="max-w-3xl space-y-5">
-            <h1 className="text-5xl font-black leading-[1.02] text-[#171412] sm:text-6xl lg:text-7xl">
-              Clause
-            </h1>
-            <p className="max-w-2xl text-xl leading-8 text-[#5a5147] sm:text-2xl">
-              A browser-based grammar escape room where teachers generate,
-              review, and assign short missions that grade grammar understanding
-              instead of exact answer strings.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button className="primary-action" onClick={onSample} type="button">
-              Try sample room
-            </button>
-            <button className="secondary-action" onClick={onCreate} type="button">
-              Create a room
-            </button>
-            <button className="ghost-action" onClick={onDashboard} type="button">
-              View dashboard
-            </button>
-          </div>
-        </div>
-
-        <div className="case-board min-h-[520px] p-5 sm:p-6">
-          <div className="mb-5 flex items-center justify-between border-b border-[#c8b894] pb-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#7c6746]">
-                Detective Office
-              </p>
-              <h2 className="mt-1 text-2xl font-black">The Missing Verb File</h2>
-            </div>
-            <span className="rounded bg-[#f7c948] px-3 py-1 text-sm font-black">
-              Grade 7
-            </span>
-          </div>
-
-          <div className="grid gap-4">
-            {stages.map((stage, index) => (
-              <div
-                className="rounded border border-[#cbb98f] bg-[#fffaf0] p-4 shadow-sm"
-                key={stage.id}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#806a48]">
-                      {stage.label}
-                    </p>
-                    <h3 className="mt-1 text-lg font-black">{stage.title}</h3>
-                  </div>
-                  <span className="rounded border border-[#d9c89c] bg-[#fdf6df] px-2 py-1 text-xs font-bold">
-                    {stage.type}
-                  </span>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-[#5f554b]">{stage.prompt}</p>
-                <div className="mt-4 flex items-center gap-2">
-                  <div className="h-2 flex-1 rounded-full bg-[#eadfca]">
-                    <div
-                      className="h-2 rounded-full bg-[#1f8a70]"
-                      style={{ width: `${(index + 1) * 28}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-black text-[#1f6656]">
-                    Token {index + 1}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="border-y border-[#d8ccb8] bg-[#fffaf0]">
-        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-6 sm:grid-cols-3 lg:px-8">
-          <Metric label="Teacher review" value="Required" />
-          <Metric label="Student data" value="Minimal" />
-          <Metric label="AI behavior" value="Structured JSON" />
-        </div>
-      </section>
-    </>
-  );
+function Header({ onHome, onTeacher }: { onHome: () => void; onTeacher: () => void }) {
+  return <header className="border-b border-[#d8dee8] bg-white"><nav className="mx-auto flex max-w-[1080px] items-center justify-between px-5 py-4">
+    <button className="flex items-center gap-2.5 text-left" onClick={onHome} type="button"><span className="grid h-9 w-9 place-items-center rounded-md bg-[#142b4a] font-black text-[#f2b84b]">C</span><span><span className="block text-lg font-black tracking-[0.12em]">CLAUSE</span><span className="block text-xs font-semibold text-[#657286]">Grammar missions</span></span></button>
+    <button className="text-sm font-bold text-[#1e4e85] underline-offset-4 hover:underline" onClick={onTeacher} type="button">Teacher sign in</button>
+  </nav></header>;
 }
 
-function WizardView({
-  onPreview,
-  selectedTheme,
-  selectedTopic,
-  setSelectedTheme,
-  setSelectedTopic,
-}: {
-  onPreview: () => void;
-  selectedTheme: string;
-  selectedTopic: string;
-  setSelectedTheme: (theme: string) => void;
-  setSelectedTopic: (topic: string) => void;
-}) {
-  return (
-    <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 lg:grid-cols-[320px_1fr] lg:px-8">
-      <aside className="space-y-3">
-        {[
-          "Learning setup",
-          "Theme",
-          "Generate",
-          "Review and validate",
-          "Publish",
-        ].map((step, index) => (
-          <div className="rounded border border-[#d8ccb8] bg-[#fffaf0] p-4" key={step}>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#806a48]">
-              Step {index + 1}
-            </p>
-            <p className="mt-1 font-black">{step}</p>
-          </div>
-        ))}
-      </aside>
-
-      <div className="space-y-6">
-        <section className="panel">
-          <div className="flex flex-col gap-4 border-b border-[#d8ccb8] pb-5 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="eyebrow">Teacher wizard</p>
-              <h2 className="mt-2 text-3xl font-black">Generate a grammar room</h2>
-              <p className="mt-3 max-w-2xl text-[#62584e]">
-                Teachers choose the curriculum target first, then review every AI
-                draft before students ever see it.
-              </p>
-            </div>
-            <button className="primary-action" onClick={onPreview} type="button">
-              Preview student room
-            </button>
-          </div>
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <Field label="Class">
-              <select className="input-shell" defaultValue="7B Grammar Lab">
-                <option>7B Grammar Lab</option>
-                <option>6A Language Arts</option>
-              </select>
-            </Field>
-            <Field label="Grade">
-              <select className="input-shell" defaultValue="Grade 7">
-                <option>Grade 6</option>
-                <option>Grade 7</option>
-                <option>Grade 8</option>
-                <option>Grade 9</option>
-              </select>
-            </Field>
-            <Field label="Topic">
-              <div className="grid gap-2 sm:grid-cols-2">
-                {topics.map((topic) => (
-                  <button
-                    className={choiceButton(selectedTopic === topic)}
-                    key={topic}
-                    onClick={() => setSelectedTopic(topic)}
-                    type="button"
-                  >
-                    {topic}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field label="Theme">
-              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                {themes.map((theme) => (
-                  <button
-                    className={choiceButton(selectedTheme === theme)}
-                    key={theme}
-                    onClick={() => setSelectedTheme(theme)}
-                    type="button"
-                  >
-                    {theme}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          </div>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="panel">
-            <p className="eyebrow">Generated draft</p>
-            <h3 className="mt-2 text-2xl font-black">The Missing Verb File</h3>
-            <p className="mt-3 text-[#62584e]">
-              Three evidence stages test subject-verb agreement with collective
-              nouns, nearby distractors, and compound subjects.
-            </p>
-            <div className="mt-5 grid gap-3">
-              {stages.map((stage) => (
-                <div
-                  className="rounded border border-[#d8ccb8] bg-[#fffaf0] p-4"
-                  key={stage.id}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="font-black">{stage.title}</p>
-                      <p className="mt-1 text-sm text-[#62584e]">{stage.target}</p>
-                    </div>
-                    <span className="w-fit rounded bg-[#dff3ec] px-2 py-1 text-xs font-black text-[#11614f]">
-                      Validated
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="panel bg-[#27231f] text-[#fff7e4]">
-            <p className="eyebrow text-[#f7c948]">Publish checks</p>
-            <div className="mt-5 space-y-4 text-sm">
-              {[
-                "Grammar correctness",
-                "Kid-safe content",
-                "Answer-key integrity",
-                "Story consistency",
-                "Clue token validity",
-              ].map((check) => (
-                <div className="flex items-center gap-3" key={check}>
-                  <span className="grid h-6 w-6 place-items-center rounded bg-[#1f8a70] text-xs font-black">
-                    OK
-                  </span>
-                  <span>{check}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () => void }) {
+  return <>
+    <section className="mx-auto max-w-[1080px] px-5 py-16 sm:py-24">
+      <div className="max-w-2xl">
+        <p className="eyebrow">Grammar escape rooms</p>
+        <h1 className="mt-4 text-4xl font-black leading-tight sm:text-5xl">Grammar escape rooms your class actually finishes.</h1>
+        <p className="mt-5 max-w-xl text-base leading-7 text-[#536174]">Create short, reviewable grammar missions with clear student feedback and classroom-ready insight.</p>
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row"><button className="primary-action flex-1" onClick={onSample} type="button">Try sample room</button><button className="primary-action flex-1" onClick={onCreate} type="button">Create a room</button></div>
       </div>
     </section>
-  );
+    <section className="border-y border-[#d8dee8] bg-white"><div className="mx-auto grid max-w-[1080px] gap-0 px-5 sm:grid-cols-3">
+      <Proof icon="01" title="Missions that move" text="Themes and locks give grammar practice a clear finish line." />
+      <Proof icon="02" title="Feedback that teaches" text="Hints, retries, and appeals stay beside the work." />
+      <Proof icon="03" title="Insight for teachers" text="Review generated content and see class patterns at a glance." />
+    </div></section>
+  </>;
 }
 
-function StudentRoom({
-  challengeVerdict,
-  checkAnswer,
-  hintLevel,
-  setSortState,
-  setStudentAnswer,
-  sortState,
-  sortedCount,
-  studentAnswer,
-  verdict,
-}: {
-  challengeVerdict: () => void;
-  checkAnswer: () => void;
-  hintLevel: number;
-  setSortState: (state: Record<string, string>) => void;
-  setStudentAnswer: (answer: string) => void;
-  sortState: Record<string, string>;
-  sortedCount: number;
-  studentAnswer: string;
-  verdict: Verdict;
-}) {
-  return (
-    <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 lg:grid-cols-[1fr_360px] lg:px-8">
-      <div className="space-y-6">
-        <div className="panel">
-          <div className="flex flex-col gap-4 border-b border-[#d8ccb8] pb-5 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="eyebrow">Guest sample room</p>
-              <h2 className="mt-2 text-3xl font-black">The Missing Verb File</h2>
-              <p className="mt-2 text-[#62584e]">
-                Recover three clue tokens, then unlock the detective cabinet.
-              </p>
-            </div>
-            <div className="rounded border border-[#d8ccb8] bg-[#fffaf0] px-4 py-3 text-sm font-black">
-              12:00 timer
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            {stages.map((stage, index) => (
-              <div className="rounded border border-[#d8ccb8] bg-[#fffaf0] p-4" key={stage.id}>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#806a48]">
-                  {stage.label}
-                </p>
-                <p className="mt-1 font-black">{stage.title}</p>
-                <p className="mt-3 text-sm text-[#62584e]">
-                  Token: {index === 0 && verdict === "correct" ? stage.token : "Locked"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <section className="panel">
-          <p className="eyebrow">Stage 1 | Sentence Surgery</p>
-          <h3 className="mt-2 text-2xl font-black">Repair the witness note</h3>
-          <p className="mt-3 text-[#62584e]">
-            Correct the sentence so the verb agrees with the subject. The answer
-            is checked for the target rule, not one exact string.
-          </p>
-          <textarea
-            className="mt-5 min-h-32 w-full rounded border border-[#c8b894] bg-[#fffaf0] p-4 text-lg leading-8 outline-none ring-[#1f8a70] focus:ring-2"
-            onChange={(event) => setStudentAnswer(event.target.value)}
-            value={studentAnswer}
-          />
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <button className="primary-action" onClick={checkAnswer} type="button">
-              Check answer
-            </button>
-            <button
-              className="secondary-action"
-              onClick={() => setStudentAnswer(stages[0].prompt)}
-              type="button"
-            >
-              Reset to original
-            </button>
-          </div>
-
-          {verdict !== "idle" && (
-            <div className={feedbackClass(verdict)}>
-              <p className="font-black">
-                {verdict === "correct" && "Correct: clue token recovered."}
-                {verdict === "revise" && "Needs revision: check the target rule."}
-                {verdict === "appeal" && "Challenge submitted for teacher review."}
-              </p>
-              <p className="mt-2 text-sm leading-6">
-                Checking: Does the verb agree with the singular collective noun
-                team? {hintLevel > 0 ? stages[0].hint : ""}
-              </p>
-              {verdict === "revise" && (
-                <button
-                  className="mt-3 text-sm font-black underline"
-                  onClick={challengeVerdict}
-                  type="button"
-                >
-                  Challenge this result
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className="panel">
-          <p className="eyebrow">Stage 2 | Evidence Sort</p>
-          <h3 className="mt-2 text-2xl font-black">Sort the evidence cards</h3>
-          <div className="mt-5 grid gap-3">
-            {evidenceCards.map((card) => (
-              <div
-                className="rounded border border-[#d8ccb8] bg-[#fffaf0] p-4"
-                key={card.sentence}
-              >
-                <p className="font-semibold">{card.sentence}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {["Agrees", "Needs revision"].map((answer) => (
-                    <button
-                      className={choiceButton(sortState[card.sentence] === answer)}
-                      key={answer}
-                      onClick={() =>
-                        setSortState({ ...sortState, [card.sentence]: answer })
-                      }
-                      type="button"
-                    >
-                      {answer}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-4 text-sm font-black text-[#1f6656]">
-            {sortedCount} of {evidenceCards.length} cards sorted correctly
-          </p>
-        </section>
-      </div>
-
-      <aside className="space-y-6">
-        <div className="panel bg-[#27231f] text-[#fff7e4]">
-          <p className="eyebrow text-[#f7c948]">Final lock</p>
-          <h3 className="mt-2 text-2xl font-black">Cabinet code</h3>
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            {stages.map((stage, index) => (
-              <div
-                className="rounded border border-[#6e6252] bg-[#332e29] p-3 text-center font-black"
-                key={stage.id}
-              >
-                {index === 0 && verdict === "correct" ? stage.token : "----"}
-              </div>
-            ))}
-          </div>
-          <p className="mt-4 text-sm leading-6 text-[#e8dcc4]">
-            Tokens unlock only after the full stage is solved. Incorrect order
-            gives guidance without a score penalty.
-          </p>
-        </div>
-
-        <div className="panel">
-          <p className="eyebrow">Progress</p>
-          <div className="mt-5 space-y-4">
-            <Progress label="Sentence Surgery" value={verdict === "correct" ? 100 : 35} />
-            <Progress label="Evidence Sort" value={sortedCount * 25} />
-            <Progress label="Case File Rewrite" value={0} />
-          </div>
-        </div>
-      </aside>
-    </section>
-  );
+function Proof({ icon, title, text }: { icon: string; title: string; text: string }) {
+  return <div className="border-[#d8dee8] py-8 sm:border-r sm:px-7 sm:last:border-0 sm:first:pl-0"><span className="grid h-9 w-9 place-items-center rounded-md bg-[#e8f0fb] text-xs font-black text-[#1e4e85]">{icon}</span><h2 className="mt-4 text-lg font-black">{title}</h2><p className="mt-2 text-sm leading-6 text-[#59677a]">{text}</p></div>;
 }
 
-function DashboardView() {
-  return (
-    <section className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
-      <div className="panel">
-        <div className="flex flex-col gap-4 border-b border-[#d8ccb8] pb-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="eyebrow">Read-only demo dashboard</p>
-            <h2 className="mt-2 text-3xl font-black">7B Grammar Lab</h2>
-            <p className="mt-2 text-[#62584e]">
-              Active room: The Missing Verb File | Subject-verb agreement
-            </p>
-          </div>
-          <button className="secondary-action" type="button">
-            Generate class insight
-          </button>
-        </div>
+function TeacherWizard({ step, setStep, theme, setTheme, onPreview }: { step: number; setStep: (step: number) => void; theme: string; setTheme: (theme: string) => void; onPreview: () => void }) {
+  const [generated, setGenerated] = useState(false);
+  const [selectedStage, setSelectedStage] = useState<StageId>("surgery");
+  const [instruction, setInstruction] = useState("");
+  const [adaptive, setAdaptive] = useState(false);
+  const [marksVisible, setMarksVisible] = useState(false);
+  const selected = stages.find((item) => item.id === selectedStage) ?? stages[0];
+  const next = () => setStep(Math.min(5, step + 1));
+  const previous = () => setStep(Math.max(1, step - 1));
 
-        <div className="mt-6 grid gap-4 md:grid-cols-4">
-          <Metric label="Completion" value="86%" />
-          <Metric label="First attempt" value="68%" />
-          <Metric label="Hints used" value="14" />
-          <Metric label="Appeals" value="2" />
-        </div>
-
-        <div className="mt-6 overflow-x-auto rounded border border-[#d8ccb8]">
-          <table className="w-full min-w-[760px] border-collapse bg-[#fffaf0] text-left text-sm">
-            <thead className="bg-[#eadfca] text-xs uppercase tracking-[0.14em] text-[#725f46]">
-              <tr>
-                <th className="px-4 py-3">Student</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Score</th>
-                <th className="px-4 py-3">Key pattern</th>
-                <th className="px-4 py-3">Appeal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dashboardRows.map((row) => (
-                <tr className="border-t border-[#d8ccb8]" key={row.name}>
-                  <td className="px-4 py-4 font-black">{row.name}</td>
-                  <td className="px-4 py-4">{row.status}</td>
-                  <td className="px-4 py-4 font-black">{row.score}</td>
-                  <td className="px-4 py-4">{row.pattern}</td>
-                  <td className="px-4 py-4">{row.appeal}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Field({
-  children,
-  label,
-}: {
-  children: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-black text-[#4e4235]">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded border border-[#d8ccb8] bg-[#fffaf0] p-4">
-      <p className="text-xs font-black uppercase tracking-[0.16em] text-[#806a48]">
-        {label}
-      </p>
-      <p className="mt-2 text-2xl font-black">{value}</p>
+  return <section className="mx-auto max-w-[1080px] px-5 py-8">
+    <div className="mb-8 flex flex-wrap gap-2">{["Learning setup", "Theme", "Generate", "Review", "Publish"].map((label, index) => <button className={stepButton(step === index + 1, step > index + 1)} key={label} onClick={() => setStep(index + 1)} type="button"><span>{index + 1}</span>{label}</button>)}</div>
+    <div className="panel">
+      {step === 1 && <><PanelTitle eyebrow="Step 1" title="Learning setup" text="Set the class context before generating a room." /><div className="mt-7 grid gap-5 sm:grid-cols-2"><Field label="Class"><select className="input-shell" defaultValue="7B Grammar Lab"><option>7B Grammar Lab</option><option>6A Language Arts</option></select></Field><Field label="Grade"><select className="input-shell" defaultValue="Grade 7"><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option></select></Field><Field label="Topic"><select className="input-shell"><option>Subject-verb agreement</option><option>Verb tense</option><option>Parts of speech</option></select></Field><Field label="Subtopic"><select className="input-shell"><option>Collective and compound subjects</option><option>Nearby noun distractors</option></select></Field></div><Field label="Stage count"><div className="mt-2 flex gap-2"><button className="choice active" type="button">3 stages</button><button className="choice" type="button">4 stages</button></div></Field></>}
+      {step === 2 && <><PanelTitle eyebrow="Step 2" title="Choose a theme" text="The shared mission components stay the same; only the tone and accents change." /><div className="mt-7 grid gap-4 md:grid-cols-3">{themes.map((item) => <button className={`theme-card ${theme === item.name ? "theme-selected" : ""}`} key={item.name} onClick={() => setTheme(item.name)} type="button"><span className="text-xs font-black text-[#1e4e85]">{item.accent || "Theme"}</span><span className="mt-2 block text-lg font-black">{item.name}</span><span className="mt-2 block text-sm leading-6 text-[#59677a]">{item.note}</span></button>)}</div></>}
+      {step === 3 && <><PanelTitle eyebrow="Step 3" title="Generate room" text="The teacher remains in control of when a draft is created." /><Field label="Optional instruction"><textarea className="input-shell mt-2 min-h-28" maxLength={250} onChange={(event) => setInstruction(event.target.value)} placeholder="For example: include a cricket-club context." value={instruction} /><span className="mt-1 block text-right text-xs text-[#657286]">{instruction.length}/250</span></Field><label className="mt-5 flex items-start gap-3 rounded-md border border-[#d8dee8] p-4"><input checked={adaptive} className="mt-1 h-4 w-4" onChange={(event) => setAdaptive(event.target.checked)} type="checkbox" /><span><span className="block font-black">Adaptive Extra Case</span><span className="mt-1 block text-sm text-[#59677a]">Offer an optional extension after the final lock.</span></span></label><button className="primary-action mt-6" onClick={() => { setGenerated(true); setStep(4); }} type="button">{generated ? "Regenerate room" : "Generate room"}</button></>}
+      {step === 4 && <div className="grid gap-6 lg:grid-cols-[280px_1fr]"><aside><p className="eyebrow">Step 4</p><h2 className="mt-2 text-2xl font-black">Review and validate</h2><div className="mt-5 space-y-2">{stages.map((item) => <button className={`stage-list ${selectedStage === item.id ? "stage-selected" : ""}`} key={item.id} onClick={() => setSelectedStage(item.id)} type="button"><span className="status-dot status-ok">OK</span><span><strong>{item.title}</strong><small>All checks passed</small></span></button>)}</div></aside><div className="rounded-md border border-[#d8dee8] p-5"><p className="eyebrow">Selected stage</p><h3 className="mt-2 text-xl font-black">{selected.title}</h3><Field label="Question text"><textarea className="input-shell mt-2 min-h-28" defaultValue={selected.prompt} /></Field><Field label="Clue token"><input className="input-shell mt-2" defaultValue={selected.token} /></Field><div className="mt-5 flex flex-wrap gap-2"><button className="secondary-action" type="button">Edit</button><button className="secondary-action" type="button">Regenerate</button><button className="secondary-action" onClick={onPreview} type="button">Test answer</button><button className="secondary-action" type="button">Duplicate room</button></div><div className="mt-6 rounded-md bg-[#eff8f3] p-4 text-sm text-[#245c45]"><strong>Validation checklist: </strong>grammar correctness, safety, grade fit, answer key, ambiguity, and story consistency are clear.</div></div></div>}
+      {step === 5 && <><PanelTitle eyebrow="Step 5" title="Publish room" text="Confirm the review and choose how your class will enter the mission." /><label className="mt-6 flex gap-3 rounded-md border border-[#d8dee8] p-4"><input className="mt-1 h-4 w-4" type="checkbox" /><span><strong>I reviewed the generated content.</strong><span className="mt-1 block text-sm text-[#59677a]">Publishing is enabled after teacher review.</span></span></label><label className="mt-4 flex items-center justify-between rounded-md border border-[#d8dee8] p-4"><span><strong>Show marks to students</strong><span className="mt-1 block text-sm text-[#59677a]">Hidden by default.</span></span><input checked={marksVisible} onChange={(event) => setMarksVisible(event.target.checked)} type="checkbox" /></label><div className="mt-6 flex flex-wrap gap-3"><button className="primary-action" type="button">Copy home invite link</button><button className="secondary-action" type="button">Launch presentation mode</button></div></>}
+      <div className="mt-8 flex justify-between border-t border-[#d8dee8] pt-5"><button className="ghost-action" disabled={step === 1} onClick={previous} type="button">Back</button>{step < 5 && <button className="primary-action" onClick={next} type="button">Continue</button>}</div>
     </div>
-  );
+  </section>;
 }
 
-function Progress({ label, value }: { label: string; value: number }) {
-  return (
-    <div>
-      <div className="mb-2 flex justify-between gap-3 text-sm font-black">
-        <span>{label}</span>
-        <span>{value}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-[#eadfca]">
-        <div
-          className="h-2 rounded-full bg-[#1f8a70]"
-          style={{ width: `${Math.min(value, 100)}%` }}
-        />
-      </div>
-    </div>
-  );
+function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () => void }) {
+  const [stageIndex, setStageIndex] = useState(0);
+  const [answer, setAnswer] = useState(stages[0].prompt);
+  const [verdict, setVerdict] = useState<Verdict>("idle");
+  const [attempts, setAttempts] = useState(0);
+  const [sortState, setSortState] = useState<Record<string, string>>({});
+  const [rewrite, setRewrite] = useState(["Neither the map nor the notebook were in the drawer.", "The clues was nearby."]);
+  const [completed, setCompleted] = useState<StageId[]>([]);
+  const [appealOpen, setAppealOpen] = useState(false);
+  const [appealSubmitted, setAppealSubmitted] = useState(false);
+  const [lockInput, setLockInput] = useState<string[]>([]);
+  const [seconds, setSeconds] = useState(720);
+  const [success, setSuccess] = useState(false);
+  // Evidence Sort is deterministic in the demo so the stage works without an AI service.
+  const sortedCount = useMemo(() => evidenceCards.filter((card) => sortState[card.sentence] === card.answer).length, [sortState]);
+  const current = stages[stageIndex];
+
+  useEffect(() => { const timer = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000); return () => window.clearInterval(timer); }, []);
+  const completeStage = (id: StageId) => { setCompleted((items) => items.includes(id) ? items : [...items, id]); setVerdict("correct"); };
+  // Accept the target repair with surrounding text; semantic grading will replace this fallback.
+  const checkSurgery = () => { if (answer.toLowerCase().replace(/\s+/g, " ").includes("team is reviewing")) completeStage("surgery"); else { setAttempts((count) => count + 1); setVerdict("revise"); } };
+  const checkRewrite = () => { const normalized = rewrite.join(" ").toLowerCase(); if (normalized.includes("notebook was") && normalized.includes("clues were")) completeStage("rewrite"); else { setAttempts((count) => count + 1); setVerdict("revise"); } };
+  const allComplete = completed.length === stages.length;
+  const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+
+  if (success) return <SuccessScreen onDashboard={onDashboard} />;
+  if (allComplete && stageIndex === 2) return <FinalLock tokens={stages.map((item) => item.token)} lockInput={lockInput} setLockInput={setLockInput} onUnlock={() => setSuccess(true)} />;
+
+  return <section className="mx-auto max-w-[1080px] px-5 py-7"><div className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><span className="demo-badge">Demo classroom</span><h1 className="mt-2 text-2xl font-black">The Missing Verb File</h1><p className="mt-1 text-sm text-[#59677a]">{theme} | Recover three tokens to open the cabinet.</p></div><div className="timer">Time {time}</div></div><StageProgressRail active={stageIndex} completed={completed} />
+    <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]"><section className="panel"><p className="eyebrow">Stage {stageIndex + 1} of 3</p><h2 className="mt-2 text-2xl font-black">{current.title}</h2><p className="mt-2 text-[#59677a]">{current.prompt}</p>
+      {current.id === "surgery" && <><input aria-label="Correct the sentence" className="input-shell mt-6 text-base" onChange={(event) => setAnswer(event.target.value)} value={answer} /><div className="mt-3 flex items-center justify-between gap-3"><button className="primary-action" onClick={checkSurgery} type="button">Check answer</button><button className="text-sm font-bold text-[#1e4e85] hover:underline" onClick={() => setAnswer(stages[0].prompt)} type="button">Reset to original</button></div></>}
+      {current.id === "sort" && <><p className="mt-5 text-sm font-bold text-[#1e4e85]">{sortedCount} of {evidenceCards.length} evidence cards correct</p><div className="mt-4 grid gap-3">{evidenceCards.map((card) => <div className="rounded-md border border-[#d8dee8] p-4" key={card.sentence}><p className="font-semibold">{card.sentence}</p><div className="mt-3 flex flex-wrap gap-2">{["Agrees", "Needs revision"].map((choice) => <button className={`choice ${sortState[card.sentence] === choice ? "active" : ""}`} key={choice} onClick={() => setSortState({ ...sortState, [card.sentence]: choice })} type="button">{choice}</button>)}</div></div>)}</div><button className="primary-action mt-5" disabled={sortedCount !== evidenceCards.length} onClick={() => completeStage("sort")} type="button">Submit evidence</button></>}
+      {current.id === "rewrite" && <><div className="mt-5 space-y-3">{rewrite.map((sentence, index) => <input aria-label={`Rewrite sentence ${index + 1}`} className="input-shell" key={index} onChange={(event) => setRewrite(rewrite.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} value={sentence} />)}</div><button className="primary-action mt-5" onClick={checkRewrite} type="button">Submit case file</button></>}
+      <FeedbackPanel appealOpen={appealOpen} appealSubmitted={appealSubmitted} attempts={attempts} onAppealOpen={() => setAppealOpen(true)} onAppealSubmit={() => { setAppealSubmitted(true); setAppealOpen(false); setVerdict("appeal"); }} rule={current.rule} verdict={verdict} />
+      {verdict === "correct" && !allComplete && <button className="secondary-action mt-5" onClick={() => { setStageIndex(Math.min(2, stageIndex + 1)); setVerdict("idle"); }} type="button">Continue to next stage</button>}
+    </section><aside className="space-y-4"><div className="panel"><p className="eyebrow">Clue tray</p><div className="mt-4 flex flex-wrap gap-2">{stages.map((item) => <span className={`token ${completed.includes(item.id) ? "token-ready" : ""}`} key={item.id}>{completed.includes(item.id) ? item.token : "Locked"}</span>)}</div></div><div className="rounded-md border border-[#bfd0e6] bg-[#edf5ff] p-4 text-sm leading-6 text-[#315b85]"><strong>Demo guide</strong><br />Try a wrong answer, challenge its result, then inspect the teacher insight.</div></aside></div>
+  </section>;
 }
 
-function navButton(active: boolean) {
-  return `rounded border px-3 py-2 transition ${
-    active
-      ? "border-[#23201d] bg-[#23201d] text-[#fff7e4]"
-      : "border-[#d8ccb8] bg-[#fffaf0] text-[#352d24] hover:border-[#23201d]"
-  }`;
+function StageProgressRail({ active, completed }: { active: number; completed: StageId[] }) { return <div className="progress-rail">{stages.map((stage, index) => <div className="progress-step" key={stage.id}><span className={`marker ${completed.includes(stage.id) ? "done" : active === index ? "current" : ""}`}>{completed.includes(stage.id) ? "OK" : index + 1}</span><span><strong>{stage.title}</strong><small>{completed.includes(stage.id) ? stage.token : active === index ? "In progress" : "Locked"}</small></span>{index < stages.length - 1 && <i />}</div>)}</div>; }
+
+function FeedbackPanel({ appealOpen, appealSubmitted, attempts, onAppealOpen, onAppealSubmit, rule, verdict }: { appealOpen: boolean; appealSubmitted: boolean; attempts: number; onAppealOpen: () => void; onAppealSubmit: () => void; rule: string; verdict: Verdict }) {
+  if (verdict === "idle") return null;
+  const label = verdict === "correct" ? "Correct" : verdict === "appeal" ? "Awaiting review" : "Needs revision";
+  const hint = attempts > 1 ? "Final guidance: repair the agreement before submitting again." : "Hint: identify the subject before you change the verb.";
+  return <div className={`feedback feedback-${verdict}`}><p className="text-sm"><strong>Checking:</strong> {rule}</p><p className="mt-3 font-black"><span className="status-icon">{verdict === "correct" ? "OK" : verdict === "appeal" ? "..." : "!"}</span>{label}</p>{verdict === "revise" && <p className="mt-3 text-sm leading-6">{hint}</p>}{appealSubmitted && <p className="mt-3 text-sm">Your note is awaiting teacher review. You can keep playing.</p>}{!appealOpen && verdict !== "appeal" && <button className="mt-4 text-sm font-bold text-[#1e4e85] underline" onClick={onAppealOpen} type="button">Challenge this result</button>}{appealOpen && <div className="mt-4 border-t border-current/20 pt-4"><label className="text-sm font-bold">Optional explanation<textarea className="input-shell mt-2 min-h-20 text-[#172235]" placeholder="Tell your teacher what you intended." /></label><button className="secondary-action mt-3" onClick={onAppealSubmit} type="button">Submit challenge</button></div>}</div>;
 }
 
-function choiceButton(active: boolean) {
-  return `rounded border px-3 py-2 text-left text-sm font-bold transition ${
-    active
-      ? "border-[#1f8a70] bg-[#dff3ec] text-[#104f43]"
-      : "border-[#d8ccb8] bg-[#fffaf0] text-[#4e4235] hover:border-[#1f8a70]"
-  }`;
-}
+function FinalLock({ tokens, lockInput, setLockInput, onUnlock }: { tokens: string[]; lockInput: string[]; setLockInput: (tokens: string[]) => void; onUnlock: () => void }) { const rightOrder = lockInput.join(" ") === tokens.join(" "); return <section className="mx-auto max-w-xl px-5 py-14"><div className="panel text-center"><p className="eyebrow">Final lock</p><h1 className="mt-2 text-3xl font-black">Open the cabinet</h1><p className="mt-3 text-[#59677a]">Enter the recovered tokens in their stage order.</p><div className="mt-7 grid grid-cols-3 gap-3">{tokens.map((_, index) => <div className="lock-slot" key={index}>{lockInput[index] ?? ""}</div>)}</div><div className="mt-6 flex flex-wrap justify-center gap-2">{tokens.map((token) => <button className="choice" disabled={lockInput.includes(token)} key={token} onClick={() => setLockInput([...lockInput, token])} type="button">{token}</button>)}</div><div className="mt-5 flex justify-center gap-2"><button className="ghost-action" onClick={() => setLockInput([])} type="button">Clear</button><button className="primary-action" disabled={!rightOrder} onClick={onUnlock} type="button">Unlock cabinet</button></div>{lockInput.length === 3 && !rightOrder && <p className="mt-4 text-sm text-[#9a3f35]">That order does not open the lock. Try the stage sequence.</p>}</div></section>; }
 
-function feedbackClass(verdict: Verdict) {
-  const base = "mt-5 rounded border p-4";
-  if (verdict === "correct") {
-    return `${base} border-[#86bfae] bg-[#e4f6ef] text-[#104f43]`;
-  }
-  if (verdict === "appeal") {
-    return `${base} border-[#c7b06d] bg-[#fff4c7] text-[#5f4b13]`;
-  }
-  return `${base} border-[#d79b83] bg-[#fff0e9] text-[#773a24]`;
-}
+function SuccessScreen({ onDashboard }: { onDashboard: () => void }) { return <section className="mx-auto max-w-xl px-5 py-16"><div className="panel text-center"><span className="grid mx-auto h-12 w-12 place-items-center rounded-full bg-[#e8f6ee] font-black text-[#1d704f]">OK</span><p className="eyebrow mt-5">Mission complete</p><h1 className="mt-2 text-3xl font-black">Case closed.</h1><p className="mt-3 text-[#59677a]">You recovered every token and opened the cabinet.</p><div className="mt-7 flex flex-wrap justify-center gap-3"><button className="primary-action" onClick={onDashboard} type="button">View results</button><button className="secondary-action" type="button">Back to My Missions</button><button className="ghost-action" type="button">Try Extra Case</button></div></div></section>; }
+
+function Dashboard() { const [expanded, setExpanded] = useState<string | null>(null); const [insight, setInsight] = useState(false); const [appealsOnly, setAppealsOnly] = useState(false); const rows = appealsOnly ? studentRows.filter((row) => row.appeal !== "None") : studentRows; return <section className="mx-auto max-w-[1080px] px-5 py-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">Class overview</p><h1 className="mt-2 text-2xl font-black">7B Grammar Lab</h1><p className="mt-1 text-sm text-[#59677a]">The Missing Verb File | Subject-verb agreement</p></div><div className="flex gap-2"><button className="secondary-action" onClick={() => setAppealsOnly(!appealsOnly)} type="button">{appealsOnly ? "Show all" : "2 appeals pending"}</button><button className="primary-action" onClick={() => setInsight(true)} type="button">Get class insight</button></div></div>{insight && <div className="mt-6 rounded-md border border-[#bfd0e6] bg-[#edf5ff] p-4 text-sm leading-6 text-[#315b85]"><strong>Class insight:</strong> Most students secure collective-noun agreement, while nearby distractors and neither/nor structures need a short reteach before the next mission.</div>}<div className="mt-6 grid gap-4 sm:grid-cols-4"><Metric label="Completion" value="86%" /><Metric label="First attempt" value="68%" /><Metric label="Hints used" value="14" /><Metric label="Appeals" value="2" /></div><div className="mt-6 overflow-hidden rounded-md border border-[#d8dee8] bg-white">{rows.map((row) => <div className="border-b border-[#d8dee8] last:border-0" key={row.name}><button className="grid w-full gap-3 px-4 py-4 text-left text-sm sm:grid-cols-[1.3fr_0.7fr_0.55fr_0.7fr_0.7fr]" onClick={() => setExpanded(expanded === row.name ? null : row.name)} type="button"><span><strong className="block">{row.name}</strong><small>{row.roll}</small></span><span>{row.status}</span><span className="font-black">{row.score}</span><span><span className="status-icon">{row.mastery === "Secure" ? "OK" : "!"}</span>{row.mastery}</span><span>{row.appeal}</span></button>{expanded === row.name && <div className="border-t border-[#d8dee8] bg-[#f8fafc] px-4 py-4 text-sm text-[#59677a]"><strong className="text-[#172235]">Attempt detail: </strong>{row.detail}<div className="mt-3 flex gap-2"><button className="secondary-action" type="button">Open item detail</button>{row.appeal !== "None" && <button className="secondary-action" type="button">Review appeal</button>}</div></div>}</div>)}</div></section>; }
+
+function PanelTitle({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) { return <div><p className="eyebrow">{eyebrow}</p><h1 className="mt-2 text-2xl font-black">{title}</h1><p className="mt-2 max-w-2xl text-[#59677a]">{text}</p></div>; }
+function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="mt-5 block text-sm font-bold text-[#2c3a4e]"><span>{label}</span>{children}</label>; }
+function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-md border border-[#d8dee8] bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#657286]">{label}</p><p className="mt-2 text-2xl font-black">{value}</p></div>; }
+function stepButton(active: boolean, complete: boolean) { return `step-button ${active ? "step-active" : ""} ${complete ? "step-complete" : ""}`; }
