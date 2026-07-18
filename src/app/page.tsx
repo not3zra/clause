@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { TeacherPortal } from "../components/teacher-portal";
 
-type View = "landing" | "wizard" | "missions" | "dashboard";
+type View = "landing" | "wizard" | "missions" | "dashboard" | "teacher";
 type Verdict = "idle" | "correct" | "revise" | "appeal";
 type StageId = "surgery" | "sort" | "rewrite";
 
@@ -69,8 +70,9 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] text-[#172235]">
-      <Header onHome={() => setView("landing")} onTeacher={() => { setView("wizard"); setWizardStep(1); }} />
-      {view === "landing" && <Landing onCreate={() => { setView("wizard"); setWizardStep(1); }} onSample={() => setView("missions")} />}
+      <Header onHome={() => setView("landing")} onTeacher={() => setView("teacher")} />
+      {view === "landing" && <Landing onCreate={() => setView("teacher")} onSample={() => setView("missions")} />}
+      {view === "teacher" && <TeacherPortal />}
       {view === "wizard" && <TeacherWizard step={wizardStep} setStep={setWizardStep} theme={theme} setTheme={setTheme} onPreview={() => setView("missions")} />}
       {view === "missions" && <MissionPlayer theme={theme} onDashboard={() => setView("dashboard")} />}
       {view === "dashboard" && <Dashboard />}
