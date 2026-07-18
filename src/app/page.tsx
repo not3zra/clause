@@ -102,21 +102,21 @@ function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () =>
       <div className="hero-motion" aria-hidden="true"><div className="hero-lamp" /><div className="hero-board"><i /><b /><b /><b /><em /></div><div className="hero-card hero-card-one" /><div className="hero-card hero-card-two" /><div className="hero-token hero-token-one" /><div className="hero-token hero-token-two" /></div>
     </section>
     <section className="landing-proof" id="features"><div className="mx-auto grid max-w-[1160px] gap-4 px-5 sm:grid-cols-2 lg:grid-cols-4">
-      <Proof icon="*" title="AI-generated rooms" text="Custom grammar puzzles, ready for teacher review." />
-      <Proof icon="+" title="Engaging gameplay" text="Short, story-led challenges with clear feedback." />
-      <Proof icon="=" title="Real insights" text="Spot progress, misconceptions, hints, and appeals." />
-      <Proof icon="@" title="Teacher friendly" text="Create, assign, and review without extra setup." />
+      <Proof kind="generate" title="AI-generated rooms" text="Custom grammar puzzles, ready for teacher review." />
+      <Proof kind="play" title="Engaging gameplay" text="Short, story-led challenges with clear feedback." />
+      <Proof kind="insight" title="Real insights" text="Spot progress, misconceptions, hints, and appeals." />
+      <Proof kind="teacher" title="Teacher friendly" text="Create, assign, and review without extra setup." />
     </div></section>
-    <section className="how-it-works" id="how-it-works"><div className="mx-auto max-w-[1080px] px-5 py-20"><p className="agency-chip mx-auto w-fit">How it works</p><h2>Create. Assign. Watch them <span>excel.</span></h2><div className="how-steps"><HowStep number="1" icon="A" title="Choose a focus" text="Select the grade, grammar skill, and a theme for the room." /><HowStep number="2" icon="*" title="Generate a room" text="Clause prepares a draft with puzzles, clues, and answer support." /><HowStep number="3" icon="+" title="Students play" text="They solve, learn from feedback, and complete the final lock." /><HowStep number="4" icon="=" title="Get insight" text="See which skills are secure and where your class needs help." /></div></div></section>
+    <section className="how-it-works" id="how-it-works"><div className="mx-auto max-w-[1080px] px-5 py-20"><p className="agency-chip mx-auto w-fit">How it works</p><h2>Create. Assign. Watch them <span>excel.</span></h2><p className="how-intro">A focused grammar room goes from learning goal to useful classroom insight in four clear steps.</p><div className="how-steps"><HowStep kind="setup" number="1" title="Choose a focus" text="Select the grade, grammar skill, and a theme for the room." /><HowStep kind="generate" number="2" title="Generate a room" text="Clause prepares a draft with puzzles, clues, and answer support." /><HowStep kind="play" number="3" title="Students play" text="They solve, learn from feedback, and complete the final lock." /><HowStep kind="insight" number="4" title="Get insight" text="See which skills are secure and where your class needs help." /></div></div></section>
   </>;
 }
 
-function Proof({ icon, title, text }: { icon: string; title: string; text: string }) {
-  return <div className="feature-card"><span className="feature-icon">{icon}</span><h2>{title}</h2><p>{text}</p></div>;
+function Proof({ kind, title, text }: { kind: "generate" | "play" | "insight" | "teacher"; title: string; text: string }) {
+  return <div className="feature-card"><span aria-hidden="true" className={`feature-icon feature-${kind}`}><i /><b /></span><h2>{title}</h2><p>{text}</p></div>;
 }
 
-function HowStep({ number, icon, title, text }: { number: string; icon: string; title: string; text: string }) {
-  return <article className="how-step"><span>{number}</span><div className="how-visual" aria-hidden="true">{icon}</div><h3>{title}</h3><p>{text}</p></article>;
+function HowStep({ kind, number, title, text }: { kind: "setup" | "generate" | "play" | "insight"; number: string; title: string; text: string }) {
+  return <article className="how-step"><span aria-label={`Step ${number}`} className={`step-icon step-${kind}`} role="img" /><h3>{title}</h3><p>{text}</p></article>;
 }
 
 function TeacherWizard({ step, setStep, theme, setTheme, onPreview }: { step: number; setStep: (step: number) => void; theme: string; setTheme: (theme: string) => void; onPreview: () => void }) {
