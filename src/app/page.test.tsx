@@ -10,8 +10,8 @@ describe("guest sample room", () => {
     render(<Home />);
     await user.click(screen.getByRole("button", { name: "Try sample room" }));
 
-    await user.click(screen.getByRole("button", { name: "Check answer" }));
-    expect(screen.getByText("Needs revision")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "File report" }));
+    expect(screen.getByText("Reopen the case")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Challenge this result" }));
     await user.type(
@@ -29,9 +29,9 @@ describe("guest sample room", () => {
       sentenceInput,
       "The team is reviewing the witness notes before lunch.",
     );
-    await user.click(screen.getByRole("button", { name: "Check answer" }));
+    await user.click(screen.getByRole("button", { name: "File report" }));
     await user.click(
-      screen.getByRole("button", { name: "Continue to next stage" }),
+      screen.getByRole("button", { name: "Inspect next evidence" }),
     );
 
     const evidenceAnswers = [
@@ -49,7 +49,7 @@ describe("guest sample room", () => {
 
     await user.click(screen.getByRole("button", { name: "Submit evidence" }));
     await user.click(
-      screen.getByRole("button", { name: "Continue to next stage" }),
+      screen.getByRole("button", { name: "Inspect next evidence" }),
     );
 
     const rewriteOne = screen.getByRole("textbox", {
