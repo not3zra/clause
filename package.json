@@ -10,8 +10,8 @@
     "test": "vitest run",
     "test:config": "node --test scripts/supabase-config.test.mjs",
     "verify:supabase": "node --env-file-if-exists=.env.local scripts/verify-supabase-config.mjs",
-    "test:openai-config": "node --test scripts/openai-config.test.mjs",
-    "verify:openai": "node --env-file-if-exists=.env.local scripts/verify-openai-config.mjs"
+    "test:ai-config": "node --test scripts/groq-config.test.mjs",
+    "verify:ai": "node --env-file-if-exists=.env.local scripts/verify-groq-config.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
