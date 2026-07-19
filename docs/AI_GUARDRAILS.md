@@ -1,12 +1,13 @@
 # AI guardrails
 
-Clause uses OpenAI only from server-side routes. The browser never receives `OPENAI_API_KEY`.
+Clause uses Groq only from server-side routes. The browser never receives `GROQ_API_KEY`.
 
 ## Approved demo configuration
 
-- Model: `gpt-5-mini`
+- Provider: Groq
+- Model: `openai/gpt-oss-20b`
 - App limits: 10 AI requests per student per hour and 30 requests per minute globally
-- Platform budget: set a $5 project budget alert/limit in the OpenAI Platform
+- Platform budget: stay within the Groq free-tier limits; review the current account limits before a demo
 - Fallback: deterministic mission feedback remains available when AI is unavailable or rate-limited
 
 ## Student-data boundary

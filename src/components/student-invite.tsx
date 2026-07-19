@@ -3,6 +3,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { evidenceCards, missionStages, stageGuidance, stageIsCorrect } from "../lib/mission";
+import type { GradingResult } from "../lib/grading";
 import { validateStudentRegistration } from "../lib/students";
 
 type Invite = { assignmentId: string; room: { title: string; theme: string; stageCount: number } };
@@ -51,6 +52,7 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   const [appealOpen, setAppealOpen] = useState(false);
   const [appealStatus, setAppealStatus] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<GradingResult | null>(null);
   const stage = missionStages[Math.min(attempt.current_stage, missionStages.length - 1)];
   const solved = attempt.current_stage >= missionStages.length || Boolean(attempt.completed_at);
   const stageResult = attempt.stage_results[stage.id] as { attempts?: number } | undefined;
@@ -67,10 +69,17 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   const submit = async () => {
     if (solved) return;
     const submitted = stage.id === "surgery" ? answer : stage.id === "sort" ? sorts : rewrite;
-    if (!stageIsCorrect(stage.id, submitted)) { const nextAttempts = attemptsUsed + 1; const stageResults = { ...attempt.stage_results, [stage.id]: { attempts: nextAttempts, correct: false } }; setVerdict("revise"); setRevealed(nextAttempts >= 3); onMessage(nextAttempts >= 3 ? "The answer key is now available with the rule explanation." : `Almost. You have ${3 - nextAttempts} attempt${nextAttempts === 2 ? "" : "s"} left.`); await supabase.from("mission_attempts").update({ hints_used: attempt.hints_used + 1, stage_results: stageResults }).eq("id", attempt.id); onAttempt({ ...attempt, hints_used: attempt.hints_used + 1, stage_results: stageResults }); return; }
+    let correct = stageIsCorrect(stage.id, submitted);
+    if (stage.id !== "sort") {
+      const { data: session } = await supabase.auth.getSession();
+      const response = await fetch("/api/grading", { method: "POST", headers: { "Content-Type": "application/json", ...(session.session ? { Authorization: `Bearer ${session.session.access_token}` } : {}) }, body: JSON.stringify({ original: stage.prompt, submitted: Array.isArray(submitted) ? submitted.join(" ") : submitted, targetRule: stage.rule, rubric: stageGuidance[stage.id].reasoning, grade: 7, subtopic: "subject-verb agreement" }) });
+      const graded = await response.json() as GradingResult | { error: string };
+      if (response.ok && "verdict" in graded) { setAiFeedback(graded); correct = graded.verdict === "correct" || graded.verdict === "correct_with_improvement" || graded.verdict === "provisional"; }
+    }
+    if (!correct) { const nextAttempts = attemptsUsed + 1; const stageResults = { ...attempt.stage_results, [stage.id]: { attempts: nextAttempts, correct: false } }; setVerdict("revise"); setRevealed(nextAttempts >= 3); onMessage(nextAttempts >= 3 ? "The answer key is now available with the rule explanation." : `Almost. You have ${3 - nextAttempts} attempt${nextAttempts === 2 ? "" : "s"} left.`); await supabase.from("mission_attempts").update({ hints_used: attempt.hints_used + 1, stage_results: stageResults }).eq("id", attempt.id); onAttempt({ ...attempt, hints_used: attempt.hints_used + 1, stage_results: stageResults }); return; }
     const token = stage.token; const recovered = [...attempt.recovered_tokens, token]; const complete = recovered.length === missionStages.length;
     // Store a small audit-friendly result per stage until semantic grading replaces this fallback.
-    const stageResults = { ...attempt.stage_results, [stage.id]: { correct: true, submittedAt: new Date().toISOString() } };
+    const stageResults = { ...attempt.stage_results, [stage.id]: { correct: true, submittedAt: new Date().toISOString(), verdict: aiFeedback?.verdict ?? "deterministic" } };
     const { data, error } = await supabase.from("mission_attempts").update({ started_at: new Date().toISOString(), current_stage: recovered.length, recovered_tokens: recovered, stage_results: stageResults, completed_at: complete ? new Date().toISOString() : null }).eq("id", attempt.id).select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results").single();
     if (error) { onMessage(error.message); return; }
     setVerdict("correct"); onAttempt(data as Attempt); onMessage(complete ? "Case closed. Your result was saved." : "Stage saved. Continue when you are ready.");
@@ -95,7 +104,7 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
     {stage.id === "sort" && <div className="mt-6 grid gap-3">{evidenceCards.map((card) => <div className="rounded-md border border-[#d8dee8] p-4" key={card.sentence}><p className="font-semibold">{card.sentence}</p><div className="mt-3 flex gap-2">{["Agrees", "Needs revision"].map((value) => <button className={`choice ${sorts[card.sentence] === value ? "active" : ""}`} key={value} onClick={() => setSorts({ ...sorts, [card.sentence]: value })} type="button">{value}</button>)}</div></div>)}</div>}
     {stage.id === "rewrite" && <div className="mt-6 space-y-3">{rewrite.map((value, index) => <input className="input-shell" key={index} onChange={(event) => setRewrite(rewrite.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} value={value} />)}</div>}
     <div className="mt-6 flex flex-wrap gap-3"><button className="primary-action" disabled={revealed} onClick={submit} type="button">Check answer</button>{!revealed && <button className="ghost-action" onClick={() => setAppealOpen(!appealOpen)} type="button">Challenge this result</button>}</div>
-    {verdict !== "idle" && <div className={`feedback feedback-${verdict === "correct" ? "correct" : "revise"}`}><p className="text-sm"><strong>Checking:</strong> {stage.rule}</p><p className="mt-3 font-black">{verdict === "correct" ? "Correct: clue token recovered." : revealed ? "Answer revealed after three attempts." : "Needs revision: identify the subject before changing the verb."}</p>{revealed && <div className="mt-4 rounded-md bg-white/70 p-3 text-sm leading-6"><strong>Correct answer: </strong>{stageGuidance[stage.id].answer}<br /><strong>Why: </strong>{stageGuidance[stage.id].reasoning}<button className="secondary-action mt-3" onClick={continueWithGuidance} type="button">Continue with guidance</button></div>}</div>}
+    {verdict !== "idle" && <div className={`feedback feedback-${verdict === "correct" ? "correct" : "revise"}`}><p className="text-sm"><strong>Checking:</strong> {aiFeedback?.ruleCheck ?? stage.rule}</p><p className="mt-3 font-black">{verdict === "correct" ? aiFeedback?.feedback ?? "Correct: clue token recovered." : revealed ? "Answer revealed after three attempts." : aiFeedback?.feedback ?? "Needs revision: identify the subject before changing the verb."}</p>{aiFeedback && !revealed && <p className="mt-3 text-sm">Hint: {aiFeedback.hint}{aiFeedback.provisionalCredit ? " Provisional credit is recorded for teacher review." : ""}</p>}{revealed && <div className="mt-4 rounded-md bg-white/70 p-3 text-sm leading-6"><strong>Correct answer: </strong>{stageGuidance[stage.id].answer}<br /><strong>Why: </strong>{stageGuidance[stage.id].reasoning}<button className="secondary-action mt-3" onClick={continueWithGuidance} type="button">Continue with guidance</button></div>}</div>}
     {appealStatus && <p className="mt-4 text-sm font-bold text-[#71560d]">Appeal status: {appealStatus === "pending" ? "Awaiting review" : appealStatus}</p>}
     {!revealed && appealOpen && <div className="mt-5 border-t border-[#d8dee8] pt-5"><label className="block text-sm font-bold">Optional explanation<textarea className="input-shell mt-2 min-h-24" onChange={(event) => setExplanation(event.target.value)} value={explanation} /></label><button className="secondary-action mt-3" onClick={submitAppeal} type="button">Submit challenge</button></div>}
   </div></main>;
