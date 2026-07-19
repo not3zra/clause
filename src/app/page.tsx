@@ -98,6 +98,7 @@ function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () =>
         <h1>Turn grammar practice into an <span>adventure.</span></h1>
         <p className="landing-lede">Create teacher-reviewed grammar rooms in minutes. Students solve, reflect, and build confidence while you see exactly where to help next.</p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row"><button className="primary-action landing-action flex-1" onClick={onCreate} type="button">Create a room <span aria-hidden="true">&#8594;</span></button><button className="secondary-action landing-action flex-1" onClick={onSample} type="button">Try sample room</button></div>
+        <aside aria-label="Judge demo checklist" className="mt-5 border-l-2 border-[#8edbd5] pl-3 text-sm text-[#52677f]"><strong className="block text-[#0f766e]">Judge demo checklist</strong><span>Try a wrong answer and reveal a hint.</span><span className="mx-2" aria-hidden="true">·</span><span>Challenge a result, then inspect the dashboard.</span></aside>
       </div>
       <div className="hero-motion" aria-hidden="true"><div className="hero-lamp" /><div className="hero-board"><i /><b /><b /><b /><em /></div><div className="hero-card hero-card-one" /><div className="hero-card hero-card-two" /><div className="hero-token hero-token-one" /><div className="hero-token hero-token-two" /></div>
     </section>
