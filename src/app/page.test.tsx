@@ -1,9 +1,19 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import Home from "./page";
 
+afterEach(cleanup);
+
 describe("guest sample room", () => {
+  it("shows a concise judge-demo checklist on the landing page", () => {
+    render(<Home />);
+
+    expect(screen.getByText("Judge demo checklist")).toBeTruthy();
+    expect(screen.getByText("Try a wrong answer and reveal a hint.")).toBeTruthy();
+    expect(screen.getByText("Challenge a result, then inspect the dashboard.")).toBeTruthy();
+  });
+
   it("lets a guest retry, appeal, complete every stage, and open the final lock", async () => {
     const user = userEvent.setup();
 

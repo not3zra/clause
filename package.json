@@ -11,7 +11,9 @@
     "test:config": "node --test scripts/supabase-config.test.mjs",
     "verify:supabase": "node --env-file-if-exists=.env.local scripts/verify-supabase-config.mjs",
     "test:ai-config": "node --test scripts/groq-config.test.mjs",
-    "verify:ai": "node --env-file-if-exists=.env.local scripts/verify-groq-config.mjs"
+    "verify:ai": "node --env-file-if-exists=.env.local scripts/verify-groq-config.mjs",
+    "test:demo-smoke": "node --test scripts/demo-smoke.test.mjs",
+    "smoke:demo": "node scripts/demo-smoke.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
