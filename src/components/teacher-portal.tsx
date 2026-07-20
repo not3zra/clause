@@ -6,6 +6,7 @@ import { validateClassInput } from "../lib/classes";
 import { createInvitePath, RoomInput, validateRoomInput } from "../lib/rooms";
 import { scoreForProgress } from "../lib/mission";
 import { defaultRoomStages } from "../lib/room-stages";
+import { teacherSignUpOutcome } from "../lib/teacher-auth";
 import { summarizeAttempts } from "../lib/teacher-metrics";
 
 type TeacherClass = { id: string; name: string; grade: number };
@@ -58,7 +59,11 @@ export function TeacherPortal() {
       : await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (result.error) setMessage(result.error.message);
-    else if (result.data.user) await loadClasses(result.data.user.id);
+    else if (mode === "sign-up") {
+      const outcome = teacherSignUpOutcome({ userId: result.data.user?.id, hasSession: Boolean(result.data.session) });
+      if (outcome.kind === "signed-in") await loadClasses(outcome.userId);
+      else { setMode("sign-in"); setMessage(outcome.message); }
+    } else if (result.data.user) await loadClasses(result.data.user.id);
   };
 
   const createClass = async (event: FormEvent) => {
