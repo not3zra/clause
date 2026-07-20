@@ -7,7 +7,7 @@ import { createInvitePath, RoomInput, validateRoomInput } from "../lib/rooms";
 import { scoreForProgress } from "../lib/mission";
 import { RoomStage, validateRoomStages } from "../lib/room-stages";
 import { teacherSignUpOutcome } from "../lib/teacher-auth";
-import { summarizeAttempts } from "../lib/teacher-metrics";
+import { AnalyticsAttempt, buildAnalytics, summarizeAttempts, toAnalyticsCsv } from "../lib/teacher-metrics";
 
 type TeacherClass = { id: string; name: string; grade: number };
 type Room = {
@@ -19,21 +19,13 @@ type Room = {
   versionId?: string;
 };
 type Assignment = { id?: string; invite_token: string; marks_visible: boolean };
-type AttemptRow = {
-  id: string;
-  current_stage: number;
-  completed_at: string | null;
-  hints_used: number;
-  stage_results: Record<
-    string,
-    { attempts?: number; correct?: boolean; guided?: boolean; verdict?: string }
-  >;
-  student_assignment: {
-    student: { full_name: string; roll_number: string } | null;
-  } | null;
-};
+type AnalyticsRoom = { id: string; title: string; class_id: string; stage_count: number };
+type AttemptRow = { id: string; current_stage: number; completed_at: string | null; hints_used: number; stage_results: Record<string, { attempts?: number; correct?: boolean; guided?: boolean; verdict?: string }>; student_assignment: { student: { full_name: string; roll_number: string } | null } | null };
+type DbItem = { mission_attempt_id: string; room_stage_id: string; item_snapshot: { rule?: string } | null; student_answer: unknown; verdict: string; recommendation: { feedback?: string; reason?: string } | null; credit_awarded: boolean; provisional_credit: boolean; hint_used: boolean; submitted_at: string };
+type DbAttempt = { id: string; current_stage: number; completed_at: string | null; hints_used: number; elapsed_seconds: number; score: number; provisional_score: number; student_assignment: { student: { full_name: string; roll_number: string } | null; assignment: { room: { id: string; class_id: string; stage_count: number } | null } | null } | null };
 type Appeal = {
   id: string;
+  mission_attempt_id: string;
   stage_id: string;
   status: string;
   student_explanation: string;
@@ -68,6 +60,7 @@ export function TeacherPortal() {
   const [message, setMessage] = useState("");
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [classes, setClasses] = useState<TeacherClass[]>([]);
+  const [analyticsRooms, setAnalyticsRooms] = useState<AnalyticsRoom[]>([]);
   const [className, setClassName] = useState("");
   const [grade, setGrade] = useState(7);
   const [roomInput, setRoomInput] = useState<RoomInput>(initialRoom);
@@ -76,7 +69,7 @@ export function TeacherPortal() {
   const [regenerationInstructions, setRegenerationInstructions] = useState("");
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [busy, setBusy] = useState(false);
-  const [attempts, setAttempts] = useState<AttemptRow[]>([]);
+  const [attempts, setAttempts] = useState<AnalyticsAttempt[]>([]);
   const [appeals, setAppeals] = useState<Appeal[]>([]);
 
   const loadClasses = useCallback(
@@ -87,28 +80,47 @@ export function TeacherPortal() {
         .order("created_at", { ascending: false });
       if (error) setMessage(error.message);
       else setClasses((data ?? []) as TeacherClass[]);
+      const { data: roomData, error: roomError } = await supabase.from("rooms").select("id, title, class_id, stage_count").order("created_at", { ascending: false });
+      if (roomError) setMessage(roomError.message);
+      else setAnalyticsRooms((roomData ?? []) as AnalyticsRoom[]);
       setTeacherId(id);
     },
     [supabase],
   );
 
   const loadResults = useCallback(async () => {
-    const [attemptResult, appealResult] = await Promise.all([
+    const [attemptResult, itemResult, appealResult] = await Promise.all([
       supabase
         .from("mission_attempts")
         .select(
-          "id, current_stage, completed_at, hints_used, stage_results, student_assignment:student_assignments!inner(student:student_profiles(full_name, roll_number))",
+          "id, current_stage, completed_at, hints_used, elapsed_seconds, score, provisional_score, student_assignment:student_assignments!inner(student:student_profiles(full_name, roll_number), assignment:assignments!inner(room:rooms!inner(id, class_id, stage_count)))",
         )
         .order("updated_at", { ascending: false }),
+      supabase.from("mission_item_attempts").select("mission_attempt_id, room_stage_id, item_snapshot, student_answer, verdict, recommendation, credit_awarded, provisional_credit, hint_used, submitted_at").order("submitted_at", { ascending: true }),
       supabase
         .from("appeals")
         .select(
-          "id, stage_id, status, student_explanation, teacher_comment, mission_attempt:mission_attempts!inner(student_assignment:student_assignments!inner(student:student_profiles(full_name)))",
+          "id, mission_attempt_id, stage_id, status, student_explanation, teacher_comment, mission_attempt:mission_attempts!inner(student_assignment:student_assignments!inner(student:student_profiles(full_name)))",
         )
         .order("created_at", { ascending: false }),
     ]);
     if (attemptResult.error) setMessage(attemptResult.error.message);
-    else setAttempts((attemptResult.data ?? []) as unknown as AttemptRow[]);
+    else if (itemResult.error) setMessage(itemResult.error.message);
+    else {
+      const itemsByAttempt = new Map<string, DbItem[]>();
+      for (const item of (itemResult.data ?? []) as unknown as DbItem[]) itemsByAttempt.set(item.mission_attempt_id, [...(itemsByAttempt.get(item.mission_attempt_id) ?? []), item]);
+      const appealsByAttempt = new Map<string, number>();
+      for (const appeal of appealResult.data ?? []) appealsByAttempt.set(appeal.mission_attempt_id, (appealsByAttempt.get(appeal.mission_attempt_id) ?? 0) + 1);
+      setAttempts(((attemptResult.data ?? []) as unknown as DbAttempt[]).map((attempt) => {
+        const assignment = attempt.student_assignment;
+        const room = assignment?.assignment?.room;
+        return {
+          id: attempt.id, classId: room?.class_id, roomId: room?.id, studentName: assignment?.student?.full_name ?? "Student", rollNumber: assignment?.student?.roll_number ?? "", currentStage: attempt.current_stage, stageCount: room?.stage_count ?? 0, completed: Boolean(attempt.completed_at), hintsUsed: attempt.hints_used, elapsedSeconds: attempt.elapsed_seconds, score: attempt.score, provisionalScore: attempt.provisional_score,
+          appeals: appealsByAttempt.get(attempt.id) ?? 0,
+          itemAttempts: (itemsByAttempt.get(attempt.id) ?? []).map((item) => ({ stageId: item.room_stage_id, rule: item.item_snapshot?.rule ?? "Unspecified rule", answer: typeof item.student_answer === "string" ? item.student_answer : JSON.stringify(item.student_answer), feedback: item.recommendation?.feedback ?? item.recommendation?.reason ?? "", verdict: item.verdict, creditAwarded: item.credit_awarded, provisionalCredit: item.provisional_credit, hintUsed: item.hint_used, submittedAt: item.submitted_at })),
+        };
+      }));
+    }
     if (appealResult.error) setMessage(appealResult.error.message);
     else setAppeals((appealResult.data ?? []) as unknown as Appeal[]);
   }, [supabase]);
@@ -897,9 +909,11 @@ export function TeacherPortal() {
           </p>
         )}
       </div>
-      <TeacherResults
+      <AnalyticsResults
         appeals={appeals}
         attempts={attempts}
+        classes={classes}
+        rooms={analyticsRooms}
         busy={busy}
         onRefresh={loadResults}
         onResolve={resolveAppeal}
@@ -908,7 +922,7 @@ export function TeacherPortal() {
   );
 }
 
-function TeacherResults({
+export function TeacherResults({
   appeals,
   attempts,
   busy,
@@ -1082,4 +1096,21 @@ function TeacherResults({
       </div>
     </div>
   );
+}
+
+function AnalyticsResults({ appeals, attempts, classes, rooms, busy, onRefresh, onResolve }: { appeals: Appeal[]; attempts: AnalyticsAttempt[]; classes: TeacherClass[]; rooms: AnalyticsRoom[]; busy: boolean; onRefresh: () => Promise<void>; onResolve: (appeal: Appeal, status: "accepted" | "denied" | "overridden", teacherComment: string) => Promise<void> }) {
+  const [classId, setClassId] = useState("");
+  const [roomId, setRoomId] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const analytics = buildAnalytics(attempts, { classId: classId || undefined, roomId: roomId || undefined });
+  const visibleAppeals = appeals.filter((appeal) => analytics.students.some((student) => student.id === appeal.mission_attempt_id));
+  const exportCsv = () => {
+    const href = URL.createObjectURL(new Blob([toAnalyticsCsv(analytics)], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = href; anchor.download = "clause-results.csv"; anchor.click(); URL.revokeObjectURL(href);
+  };
+  return <div className="panel mt-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="eyebrow">Teacher-only analytics</p><h2 className="mt-2 text-2xl font-black">Class results</h2><p className="mt-1 text-sm text-[#667085]">Completion {analytics.summary.completion}% · First attempt {analytics.summary.firstAttemptAccuracy}% · Hints {analytics.summary.hintsUsed} · Active {analytics.summary.activeAttempts} · Elapsed {Math.round(analytics.summary.elapsedSeconds / 60)} min · Appeals {analytics.summary.appeals}</p></div><div className="flex gap-2"><button className="secondary-action" disabled={busy} onClick={() => void onRefresh()} type="button">Refresh</button><button className="primary-action" disabled={!analytics.students.length} onClick={exportCsv} type="button">Export CSV</button></div></div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2"><select aria-label="Analytics class" className="input-shell" value={classId} onChange={(event) => { setClassId(event.target.value); setRoomId(""); }}><option value="">All of my classes</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select aria-label="Analytics room" className="input-shell" value={roomId} onChange={(event) => setRoomId(event.target.value)}><option value="">All rooms</option>{rooms.filter((item) => !classId || item.class_id === classId).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
+    {!analytics.students.length ? <p className="mt-6 rounded-md border border-dashed border-[#e8e2d7] p-5 text-sm text-[#657286]">No student attempts match this class and room yet.</p> : <><div className="mt-5 grid gap-3 sm:grid-cols-3">{analytics.rules.map((rule) => <div className="rounded-md border border-[#e8e2d7] p-3" key={rule.rule}><strong>{rule.rule}</strong><p className="mt-1 text-sm text-[#657286]">{rule.firstAttemptAccuracy}% first attempt · {rule.mastery}</p></div>)}</div><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e8e2d7] text-xs uppercase text-[#657286]"><tr><th className="pb-3">Student</th><th className="pb-3">Progress</th><th className="pb-3">Mastery</th><th className="pb-3">Hints</th><th className="pb-3">Status</th></tr></thead><tbody>{analytics.students.map((student) => <><tr className="border-b border-[#f7f3eb]" key={student.id}><td className="py-3 font-bold">{student.name}<span className="ml-2 text-xs font-normal text-[#657286]">{student.rollNumber}</span></td><td>{student.currentStage}/{student.stageCount} · {student.score}%</td><td>{student.mastery}</td><td>{student.hintsUsed}</td><td>{student.completed ? "Complete" : "In progress"}<button className="ml-2 text-xs font-bold text-[#0f766e] underline" onClick={() => setExpanded(expanded === student.id ? null : student.id)} type="button">Details</button></td></tr>{expanded === student.id && <tr key={`${student.id}-detail`}><td className="bg-[#f8fafc] px-3 py-4 text-sm" colSpan={5}><p><strong>Elapsed:</strong> {student.elapsedSeconds}s · <strong>Provisional score:</strong> {student.provisionalScore}%</p>{student.itemAttempts.map((item) => <div className="mt-3 rounded border border-[#e8e2d7] p-3" key={`${item.stageId}-${item.submittedAt}`}><strong>{item.rule}</strong> · {item.verdict}{item.provisionalCredit ? " · provisional" : ""}<p>Original answer: {item.answer}</p><p>Feedback: {item.feedback || "None recorded"}</p><p className="text-xs text-[#657286]">Audit event: {item.submittedAt}</p></div>)}</td></tr>}</>)}</tbody></table></div></>}
+    <div className="mt-7 border-t border-[#e8e2d7] pt-5"><p className="eyebrow">Appeals</p><h3 className="mt-2 text-lg font-black">{visibleAppeals.filter((item) => item.status === "pending").length} pending review</h3>{visibleAppeals.map((appeal) => <div className="mt-3 rounded-md border border-[#e8e2d7] p-4" key={appeal.id}><strong>{appeal.mission_attempt?.student_assignment?.student?.full_name ?? "Student"} · {appeal.stage_id}</strong><p className="mt-2 text-sm">{appeal.student_explanation || "No explanation provided."}</p><p className="mt-1 text-xs uppercase">{appeal.status}</p>{appeal.status === "pending" && <><textarea aria-label={`Comment for appeal ${appeal.id}`} className="input-shell mt-3 min-h-20" onChange={(event) => setComments({ ...comments, [appeal.id]: event.target.value })} value={comments[appeal.id] ?? ""} /><div className="mt-3 flex gap-2"><button className="secondary-action" disabled={busy} onClick={() => void onResolve(appeal, "accepted", comments[appeal.id] ?? "")} type="button">Accept</button><button className="secondary-action" disabled={busy} onClick={() => void onResolve(appeal, "denied", comments[appeal.id] ?? "")} type="button">Deny</button><button className="secondary-action" disabled={busy} onClick={() => void onResolve(appeal, "overridden", comments[appeal.id] ?? "")} type="button">Override</button></div></>}</div>)}</div></div>;
 }
