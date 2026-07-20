@@ -27,9 +27,21 @@ export function parseGeneratedRoomDraft(outputText: string, stageCount: number):
 }
 
 export function groqOutputText(data: unknown) {
-  const response = data as { output_text?: unknown; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
+  const response = data as { output_text?: unknown; output?: unknown };
   if (typeof response?.output_text === "string") return response.output_text;
-  return response?.output?.flatMap((item) => item.content ?? []).find((content) => content.type === "output_text")?.text ?? "";
+  const output = Array.isArray(response?.output) ? response.output : [response?.output];
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const content = (item as { content?: unknown }).content;
+    const parts = Array.isArray(content) ? content : [content];
+    for (const part of parts) {
+      if (!part || typeof part !== "object") continue;
+      const value = part as { type?: unknown; text?: unknown; json?: unknown };
+      if (value.type === "output_text" && typeof value.text === "string") return value.text;
+      if (value.type === "output_json" && value.json !== undefined) return JSON.stringify(value.json);
+    }
+  }
+  return "";
 }
 
 export type RoomGenerationInput = { grade: number; topic: string; subtopic: string; theme: string; stageCount: 3 | 4; instructions?: string };
