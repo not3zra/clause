@@ -5,10 +5,12 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { validateClassInput } from "../lib/classes";
 import { createInvitePath, RoomInput, validateRoomInput } from "../lib/rooms";
 import { scoreForProgress } from "../lib/mission";
+import { defaultRoomStages } from "../lib/room-stages";
+import { teacherSignUpOutcome } from "../lib/teacher-auth";
 import { summarizeAttempts } from "../lib/teacher-metrics";
 
 type TeacherClass = { id: string; name: string; grade: number };
-type Room = { id: string; title: string; status: "draft" | "published" | "closed"; reviewed_at: string | null; validated_at: string | null };
+type Room = { id: string; title: string; status: "draft" | "published" | "closed"; reviewed_at: string | null; validated_at: string | null; versionId?: string };
 type Assignment = { invite_token: string; marks_visible: boolean };
 type AttemptRow = { id: string; current_stage: number; completed_at: string | null; hints_used: number; stage_results: Record<string, { attempts?: number; correct?: boolean; guided?: boolean; verdict?: string }>; student_assignment: { student: { full_name: string; roll_number: string } | null } | null };
 type Appeal = { id: string; stage_id: string; status: string; student_explanation: string; teacher_comment: string; mission_attempt: { student_assignment: { student: { full_name: string } | null } | null } | null };
@@ -57,7 +59,11 @@ export function TeacherPortal() {
       : await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (result.error) setMessage(result.error.message);
-    else if (result.data.user) await loadClasses(result.data.user.id);
+    else if (mode === "sign-up") {
+      const outcome = teacherSignUpOutcome({ userId: result.data.user?.id, hasSession: Boolean(result.data.session) });
+      if (outcome.kind === "signed-in") await loadClasses(outcome.userId);
+      else { setMode("sign-in"); setMessage(outcome.message); }
+    } else if (result.data.user) await loadClasses(result.data.user.id);
   };
 
   const createClass = async (event: FormEvent) => {
@@ -82,8 +88,15 @@ export function TeacherPortal() {
       theme: result.value.theme, stage_count: result.value.stageCount,
     }).select("id, title, status, reviewed_at, validated_at").single();
     setBusy(false);
-    if (error) setMessage(error.message);
-    else { setRoom(data as Room); setAssignment(null); setMessage("Draft saved. Review the generated room before validation."); }
+    if (error) { setMessage(error.message); return; }
+    const { data: version, error: versionError } = await supabase.from("room_versions").insert({ room_id: data.id, stage_count: result.value.stageCount }).select("id").single();
+    if (versionError || !version) { setMessage(versionError?.message ?? "Could not create the room version."); return; }
+    const stages = defaultRoomStages(result.value.stageCount as 3 | 4);
+    const { data: savedStages, error: stagesError } = await supabase.from("room_stages").insert(stages.map((stage) => ({ room_version_id: version.id, ordinal: stage.ordinal, title: stage.title, prompt: stage.prompt, rule: stage.rule, token: stage.token, item_type: stage.itemType, accepted_answers: stage.acceptedAnswers, rubric: stage.rubric, hints: stage.hints }))).select("id, ordinal");
+    if (stagesError || !savedStages) { setMessage(stagesError?.message ?? "Could not save room stages."); return; }
+    const items = stages.flatMap((stage) => (stage.items ?? []).map((item, index) => ({ room_stage_id: savedStages.find((saved) => saved.ordinal === stage.ordinal)?.id, ordinal: index + 1, prompt: item.prompt, accepted_answers: item.acceptedAnswers }))).filter((item) => item.room_stage_id);
+    if (items.length) { const { error: itemsError } = await supabase.from("room_stage_items").insert(items); if (itemsError) { setMessage(itemsError.message); return; } }
+    setRoom({ ...(data as Room), versionId: version.id }); setAssignment(null); setMessage("Draft saved with its own editable stage version. Review the content before validation.");
   };
 
   const reviewRoom = async () => {
@@ -105,12 +118,11 @@ export function TeacherPortal() {
   const publishRoom = async () => {
     if (!room?.reviewed_at || !room.validated_at || !teacherId) { setMessage("Review and validation are required before publishing."); return; }
     setBusy(true);
-    const assignmentResult = await supabase.from("assignments").insert({ room_id: room.id, teacher_id: teacherId, marks_visible: roomInput.marksVisible }).select("invite_token, marks_visible").single();
-    if (assignmentResult.error) { setBusy(false); setMessage(assignmentResult.error.message); return; }
-    const roomResult = await supabase.from("rooms").update({ status: "published" }).eq("id", room.id).select("id, title, status, reviewed_at, validated_at").single();
+    const published = await supabase.rpc("publish_room_version", { p_room_id: room.id, p_marks_visible: roomInput.marksVisible }).single();
+    const roomResult = published.error ? { error: published.error } : await supabase.from("rooms").select("id, title, status, reviewed_at, validated_at").eq("id", room.id).single();
     setBusy(false);
     if (roomResult.error) setMessage(roomResult.error.message);
-    else { setRoom(roomResult.data as Room); setAssignment(assignmentResult.data as Assignment); setMessage("Room published. Its invite link is now ready to share."); }
+    else { const frozen = published.data as { invite_token: string; marks_visible: boolean }; setRoom(roomResult.data as Room); setAssignment({ invite_token: frozen.invite_token, marks_visible: frozen.marks_visible }); setMessage("Room published. Its exact stage version is now frozen and ready to share."); }
   };
 
   const copyInvite = async () => {
