@@ -4,6 +4,10 @@
 
 Set the variables listed in `.env.example` in Vercel for Production and Preview as appropriate. Never copy values into the repository. Apply Supabase migrations in filename order before merging a migration-bearing PR, then use `SMOKE_URL=https://clause-learn.vercel.app npm run smoke:deployment` after deployment.
 
+## Supabase Auth
+
+For teacher email confirmation, set the Site URL to `https://clause-learn.vercel.app/` and add that same URL to the Redirect URLs allow list in Supabase Authentication → URL Configuration. The hosted confirmation email is sent by Supabase after teacher sign-up.
+
 ## Local container workflow
 
 Copy required non-secret development values into `.env.local`, then run `docker compose up --build`. The container health check calls `/api/health`; use `docker compose down` to stop it. `.env.local` is excluded from images and source control.
