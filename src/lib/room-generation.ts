@@ -23,6 +23,12 @@ export function parseGeneratedRoomDraft(outputText: string, stageCount: number):
   catch { return { ok: false, errors: ["The generation response was not valid JSON."] }; }
 }
 
+export function groqOutputText(data: unknown) {
+  const response = data as { output_text?: unknown; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
+  if (typeof response?.output_text === "string") return response.output_text;
+  return response?.output?.flatMap((item) => item.content ?? []).find((content) => content.type === "output_text")?.text ?? "";
+}
+
 export type RoomGenerationInput = { grade: number; topic: string; subtopic: string; theme: string; stageCount: 3 | 4; instructions?: string };
 export function isRoomGenerationInput(value: unknown): value is RoomGenerationInput {
   const input = value as Partial<RoomGenerationInput>;

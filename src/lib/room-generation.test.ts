@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { groqOutputText, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -10,5 +10,9 @@ describe("generated room validation", () => {
   it("parses only a valid structured Groq response", () => {
     expect(parseGeneratedRoomDraft(JSON.stringify(valid), 3)).toMatchObject({ ok: true });
     expect(parseGeneratedRoomDraft("{not json", 3)).toEqual({ ok: false, errors: ["The generation response was not valid JSON."] });
+  });
+  it("reads either Groq response text shape", () => {
+    expect(groqOutputText({ output_text: "draft" })).toBe("draft");
+    expect(groqOutputText({ output: [{ content: [{ type: "output_text", text: "nested draft" }] }] })).toBe("nested draft");
   });
 });
