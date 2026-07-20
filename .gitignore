@@ -13,6 +13,9 @@
 # testing
 /coverage
 .eslintcache
+vitest.config.ts
+*.test.ts
+*.test.tsx
 
 # next.js
 /.next/
@@ -27,6 +30,8 @@
 *.pem
 *.swp
 *.swo
+Thumbs.db
+Desktop.ini
 
 # debug
 npm-debug.log*
@@ -48,3 +53,15 @@ next-env.d.ts
 
 # local development logs
 *.log
+
+# IDE
+.vscode/
+.idea/
+
+# test artifacts
+/test-results/
+/playwright-report/
+
+# dev docs & scripts (not needed for deployment)
+docs/
+scripts/
