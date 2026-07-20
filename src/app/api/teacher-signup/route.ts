@@ -13,6 +13,6 @@ export async function POST(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL; const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) return NextResponse.json({ error: "Teacher sign-up is temporarily unavailable." }, { status: 503 });
   const auth = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { error } = await auth.auth.signUp(teacherSignUpRequest({ email: body.email.trim(), password: body.password, displayName: body.displayName.trim() }, request.nextUrl.origin));
-  return error ? NextResponse.json({ error: "Could not create this teacher account." }, { status: 400 }) : NextResponse.json({ ok: true }, { status: 201 });
+  const { data, error } = await auth.auth.signUp(teacherSignUpRequest({ email: body.email.trim(), password: body.password, displayName: body.displayName.trim() }, request.nextUrl.origin));
+  return error ? NextResponse.json({ error: "Could not create this teacher account." }, { status: 400 }) : NextResponse.json({ ok: true, confirmationRequired: !data.session }, { status: 201 });
 }

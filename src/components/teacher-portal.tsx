@@ -7,6 +7,7 @@ import { createInvitePath, RoomInput, validateRoomInput } from "../lib/rooms";
 import { scoreForProgress } from "../lib/mission";
 import { RoomStage, validateRoomStages } from "../lib/room-stages";
 import { AnalyticsAttempt, buildAnalytics, summarizeAttempts, toAnalyticsCsv } from "../lib/teacher-metrics";
+import { teacherSignUpMessage } from "../lib/teacher-auth";
 import { Turnstile } from "./turnstile";
 
 type TeacherClass = { id: string; name: string; grade: number };
@@ -142,9 +143,9 @@ export function TeacherPortal() {
     if (mode === "sign-up") {
       if (!turnstileToken) { setBusy(false); setMessage("Complete the security verification first."); return; }
       const response = await fetch("/api/teacher-signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, displayName, turnstileToken }) });
-      const payload = await response.json() as { error?: string };
+      const payload = await response.json() as { error?: string; confirmationRequired?: boolean };
       setBusy(false); if (!response.ok) { setMessage(payload.error ?? "Could not create this teacher account."); return; }
-      setMode("sign-in"); setMessage("Account created. Check your email to confirm it, then sign in."); return;
+      setMode("sign-in"); setMessage(teacherSignUpMessage(Boolean(payload.confirmationRequired))); return;
     }
     const result = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
