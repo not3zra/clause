@@ -3,15 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fallbackGrade, isGradingInput, isGradingResult, prepareGradingPayload } from "@/lib/grading";
 import { groqConfiguration } from "../../../../scripts/groq-config.mjs";
 import { resolveStudentSession, studentSessionCookie } from "@/lib/student-session-server";
-
-const studentRequests = new Map<string, number[]>();
-const globalRequests: number[] = [];
-
-function withinLimit(requests: number[], windowMs: number, limit: number, now: number) {
-  while (requests[0] && requests[0] <= now - windowMs) requests.shift();
-  if (requests.length >= limit) return false;
-  requests.push(now); return true;
-}
+import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedStudent(request: NextRequest) {
   const cookieSession = await resolveStudentSession(request.cookies.get(studentSessionCookie)?.value);
@@ -24,6 +16,7 @@ async function authenticatedStudent(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!sameOrigin(request) || requestTooLarge(request)) return NextResponse.json({ error: "Invalid grading request." }, { status: 400 });
   const body = await request.json().catch(() => null);
   if (!isGradingInput(body)) return NextResponse.json({ error: "Invalid grading request." }, { status: 400 });
   const safePayload = prepareGradingPayload(body);
@@ -31,9 +24,9 @@ export async function POST(request: NextRequest) {
   const studentId = await authenticatedStudent(request);
   if (!studentId) return NextResponse.json({ error: "Sign in to check an answer." }, { status: 401 });
   try {
-    const config = groqConfiguration(process.env); const now = Date.now(); const student = studentRequests.get(studentId) ?? [];
-    if (!withinLimit(student, 60 * 60 * 1000, config.perStudentHourlyLimit, now) || !withinLimit(globalRequests, 60 * 1000, config.globalPerMinuteLimit, now)) return NextResponse.json({ ...fallback, feedback: "AI checking is temporarily rate-limited. This safe feedback is ready now.", source: "fallback" });
-    studentRequests.set(studentId, student);
+    const config = groqConfiguration(process.env);
+    const rate = await durableRateLimit(`grading:${studentId}`, config.perStudentHourlyLimit, 3600);
+    if (!rate.allowed) return NextResponse.json({ ...fallback, feedback: "AI checking is temporarily rate-limited. This safe feedback is ready now.", source: "fallback" }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
     if (!config.configured) return NextResponse.json(fallback);
     const response = await fetch("https://api.groq.com/openai/v1/responses", {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` },

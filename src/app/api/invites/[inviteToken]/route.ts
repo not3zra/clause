@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createOpaqueToken, hashOpaqueToken, studentSessionMaxAgeSeconds, validateStudentEnrolment } from "@/lib/student-sessions";
 import { resolveStudentSession, studentSessionCookie } from "@/lib/student-session-server";
+import { anonymousRateLimitKey, durableRateLimit, requestTooLarge, sameOrigin, verifyTurnstile } from "@/lib/security";
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -33,7 +34,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ inviteToken: string }> }) {
   const { inviteToken } = await params;
-  const input = validateStudentEnrolment(await request.json());
+  if (!sameOrigin(request) || requestTooLarge(request)) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  const rate = await durableRateLimit(await anonymousRateLimitKey(request, "enrolment"), 10, 3600);
+  if (!rate.allowed) return NextResponse.json({ error: "Too many enrolment attempts. Please try again later." }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!await verifyTurnstile(body?.turnstileToken, request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null)) return NextResponse.json({ error: "Security verification failed. Please try again." }, { status: 403 });
+  const input = validateStudentEnrolment(body);
   if (!input.ok) return NextResponse.json({ errors: input.errors }, { status: 400 });
   try {
     const invite = await inviteFor(inviteToken);
@@ -43,9 +49,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const expiresAt = new Date(Date.now() + studentSessionMaxAgeSeconds * 1000).toISOString();
     const internalEmail = `session.${crypto.randomUUID()}@accounts.clause.invalid`;
     const { data: userData, error: userError } = await admin.auth.admin.createUser({ email: internalEmail, email_confirm: true, user_metadata: { account_type: "student", passwordless_session: true } });
-    if (userError || !userData.user) return NextResponse.json({ error: userError?.message ?? "Could not create the student account." }, { status: 400 });
+    if (userError || !userData.user) return NextResponse.json({ error: "Could not create the student account." }, { status: 400 });
     const { data: enrolment, error: enrolmentError } = await admin.rpc("enrol_student_with_session", { p_assignment_id: invite.id, p_student_id: userData.user.id, p_full_name: input.value.fullName, p_roll_number: input.value.rollNumber, p_session_hash: hashOpaqueToken(opaqueToken), p_expires_at: expiresAt }).single();
-    if (enrolmentError) { await admin.auth.admin.deleteUser(userData.user.id); return NextResponse.json({ error: enrolmentError.message }, { status: 400 }); }
+    if (enrolmentError) { await admin.auth.admin.deleteUser(userData.user.id); return NextResponse.json({ error: "Could not create the student account." }, { status: 400 }); }
     const response = NextResponse.json({ assignmentId: invite.id, enrolmentId: (enrolment as { student_assignment_id: string }).student_assignment_id }, { status: 201 });
     response.cookies.set(studentSessionCookie, opaqueToken, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: studentSessionMaxAgeSeconds });
     return response;
