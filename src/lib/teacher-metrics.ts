@@ -68,7 +68,7 @@ function isInScope(attempt: AnalyticsAttempt, scope: Scope) {
 
 export function buildAnalytics(attempts: AnalyticsAttempt[], scope: Scope = {}) {
   const scoped = attempts.filter((attempt) => isInScope(attempt, scope));
-  const items = scoped.flatMap((attempt) => attempt.itemAttempts);
+  const items = scoped.flatMap((attempt) => attempt.itemAttempts.map((item) => ({ ...item, stageId: `${attempt.id}:${item.stageId}` })));
   const students = scoped.map((attempt) => {
     const accuracy = firstAttemptAccuracy(attempt.itemAttempts);
     const provisional = attempt.provisionalScore > 0 || attempt.itemAttempts.some((item) => item.provisionalCredit);

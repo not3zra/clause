@@ -49,4 +49,13 @@ describe("teacher review acceptance", () => {
     ], { classId: "class-a", roomId: "room-a" });
     expect(scoped.students.map((student) => student.name)).toEqual(["Asha"]);
   });
+
+  it("counts the same room stage separately for each student's first attempt", () => {
+    const analytics = buildAnalytics([
+      { id: "student-a", studentName: "Asha", rollNumber: "01", currentStage: 1, stageCount: 1, completed: true, hintsUsed: 0, elapsedSeconds: 1, score: 100, provisionalScore: 0, itemAttempts: [{ stageId: "shared-stage", rule: "Agreement", answer: "is", feedback: "", verdict: "correct", creditAwarded: true, provisionalCredit: false, hintUsed: false, submittedAt: "2026-07-20T10:00:00Z" }], appeals: 0 },
+      { id: "student-b", studentName: "Bimal", rollNumber: "02", currentStage: 1, stageCount: 1, completed: true, hintsUsed: 0, elapsedSeconds: 1, score: 0, provisionalScore: 0, itemAttempts: [{ stageId: "shared-stage", rule: "Agreement", answer: "are", feedback: "", verdict: "revise", creditAwarded: false, provisionalCredit: false, hintUsed: false, submittedAt: "2026-07-20T10:01:00Z" }], appeals: 0 },
+    ]);
+    expect(analytics.summary.firstAttemptAccuracy).toBe(50);
+    expect(analytics.rules[0].firstAttemptAccuracy).toBe(50);
+  });
 });
