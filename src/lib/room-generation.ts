@@ -19,7 +19,8 @@ export function validateGeneratedRoomDraft(value: unknown, stageCount: number): 
 }
 
 export function parseGeneratedRoomDraft(outputText: string, stageCount: number): Validation {
-  try { return validateGeneratedRoomDraft(JSON.parse(outputText), stageCount); }
+  const json = outputText.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try { return validateGeneratedRoomDraft(JSON.parse(json), stageCount); }
   catch { return { ok: false, errors: ["The generation response was not valid JSON."] }; }
 }
 
