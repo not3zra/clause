@@ -9,6 +9,7 @@ describe("generated room validation", () => {
   it("rejects unsafe and ambiguous generated content", () => expect(validateGeneratedRoomDraft({ ...valid, story: "Threaten the pupil to win.", stages: valid.stages.map((stage, index) => index ? stage : { ...stage, rubric: "It depends." }) }, 3)).toMatchObject({ ok: false, errors: expect.arrayContaining(["Generated content is not age-appropriate.", "Stage 1 has an ambiguous rubric."]) }));
   it("parses only a valid structured Groq response", () => {
     expect(parseGeneratedRoomDraft(JSON.stringify(valid), 3)).toMatchObject({ ok: true });
+    expect(parseGeneratedRoomDraft(`\`\`\`json\n${JSON.stringify(valid)}\n\`\`\``, 3)).toMatchObject({ ok: true });
     expect(parseGeneratedRoomDraft("{not json", 3)).toEqual({ ok: false, errors: ["The generation response was not valid JSON."] });
   });
   it("reads either Groq response text shape", () => {
