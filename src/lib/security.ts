@@ -1,4 +1,5 @@
 type Fetcher = typeof fetch;
+type Environment = Record<string, string | undefined>;
 
 export function requestTooLarge(request: Request, maximumBytes = 16_384) {
   const length = Number(request.headers.get("content-length") ?? "0");
@@ -10,7 +11,7 @@ export function sameOrigin(request: Request) {
   return !origin || origin === new URL(request.url).origin;
 }
 
-export async function verifyTurnstile(token: unknown, remoteIp: string | null, environment = process.env, fetcher: Fetcher = fetch) {
+export async function verifyTurnstile(token: unknown, remoteIp: string | null, environment: Environment = process.env, fetcher: Fetcher = fetch) {
   const secret = environment.TURNSTILE_SECRET_KEY;
   if (typeof token !== "string" || !token || !secret) return false;
   const body = new URLSearchParams({ secret, response: token });
@@ -21,7 +22,7 @@ export async function verifyTurnstile(token: unknown, remoteIp: string | null, e
   } catch { return false; }
 }
 
-export async function durableRateLimit(key: string, limit: number, windowSeconds: number, environment = process.env, fetcher: Fetcher = fetch) {
+export async function durableRateLimit(key: string, limit: number, windowSeconds: number, environment: Environment = process.env, fetcher: Fetcher = fetch) {
   const url = environment.UPSTASH_REDIS_REST_URL;
   const token = environment.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return { allowed: false, retryAfter: windowSeconds };
