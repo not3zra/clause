@@ -1,7 +1,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RoomStage, roomStageIsCorrect } from "../lib/room-stages";
 import type { GradingResult } from "../lib/grading";
 import { validateStudentRegistration } from "../lib/students";
@@ -53,11 +53,26 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   const [appealStatus, setAppealStatus] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [aiFeedback, setAiFeedback] = useState<GradingResult | null>(null);
+  const [lastItemAttemptId, setLastItemAttemptId] = useState<string | null>(null);
+  const submissionId = useRef<string | null>(null);
   const stage = stages[Math.min(attempt.current_stage, stages.length - 1)]!;
   const stageKey = stage.id ?? `stage-${stage.ordinal}`;
   const solved = attempt.current_stage >= stages.length || Boolean(attempt.completed_at);
   const stageResult = attempt.stage_results[stageKey] as { attempts?: number } | undefined;
   const attemptsUsed = stageResult?.attempts ?? 0;
+
+  const persistItem = async ({ credit, provisional, verdict: itemVerdict, source, hint, submitted }: { credit: boolean; provisional: boolean; verdict: "correct" | "correct_with_improvement" | "revise" | "provisional" | "guided"; source: "ai" | "fallback" | "teacher" | "deterministic"; hint: boolean; submitted: unknown }) => {
+    const actionId = submissionId.current ?? crypto.randomUUID();
+    submissionId.current = actionId;
+    const { data, error } = await supabase.rpc("submit_mission_item", {
+      p_attempt_id: attempt.id, p_stage_id: stage.id, p_answer: submitted,
+      p_verdict: itemVerdict, p_recommendation: aiFeedback ?? {}, p_source: source,
+      p_provisional_credit: provisional, p_credit_awarded: credit, p_hint_used: hint,
+      p_idempotency_key: `${attempt.id}:${stageKey}:${actionId}`,
+    });
+    if (!error) { submissionId.current = null; setLastItemAttemptId((data as { id?: string } | null)?.id ?? null); }
+    return error;
+  };
 
   useEffect(() => {
     void (async () => {
@@ -77,17 +92,16 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
       const graded = await response.json() as GradingResult | { error: string };
       if (response.ok && "verdict" in graded) { setAiFeedback(graded); correct = graded.verdict === "correct" || graded.verdict === "correct_with_improvement" || graded.verdict === "provisional"; }
     }
-    if (!correct) { const nextAttempts = attemptsUsed + 1; const stageResults = { ...attempt.stage_results, [stageKey]: { attempts: nextAttempts, correct: false } }; setVerdict("revise"); setRevealed(nextAttempts >= 3); onMessage(nextAttempts >= 3 ? "The answer key is now available with the rule explanation." : `Almost. You have ${3 - nextAttempts} attempt${nextAttempts === 2 ? "" : "s"} left.`); await supabase.from("mission_attempts").update({ hints_used: attempt.hints_used + 1, stage_results: stageResults }).eq("id", attempt.id); onAttempt({ ...attempt, hints_used: attempt.hints_used + 1, stage_results: stageResults }); return; }
+    if (!correct) { const nextAttempts = attemptsUsed + 1; const stageResults = { ...attempt.stage_results, [stageKey]: { attempts: nextAttempts, correct: false } }; const error = await persistItem({ credit: false, provisional: false, verdict: "revise", source: aiFeedback?.source ?? "deterministic", hint: true, submitted }); if (error) { onMessage(error.message); return; } setVerdict("revise"); setRevealed(nextAttempts >= 3); onMessage(nextAttempts >= 3 ? "The answer key is now available with the rule explanation." : `Almost. You have ${3 - nextAttempts} attempt${nextAttempts === 2 ? "" : "s"} left.`); onAttempt({ ...attempt, hints_used: attempt.hints_used + 1, stage_results: stageResults }); return; }
     const token = stage.token; const recovered = [...attempt.recovered_tokens, token]; const complete = recovered.length === stages.length;
-    // Store a small audit-friendly result per stage until semantic grading replaces this fallback.
     const stageResults = { ...attempt.stage_results, [stageKey]: { correct: true, submittedAt: new Date().toISOString(), verdict: aiFeedback?.verdict ?? "deterministic" } };
-    const { data, error } = await supabase.from("mission_attempts").update({ started_at: new Date().toISOString(), current_stage: recovered.length, recovered_tokens: recovered, stage_results: stageResults, completed_at: complete ? new Date().toISOString() : null }).eq("id", attempt.id).select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results").single();
+    const error = await persistItem({ credit: true, provisional: aiFeedback?.provisionalCredit ?? false, verdict: aiFeedback?.verdict ?? "correct", source: aiFeedback?.source ?? "deterministic", hint: false, submitted });
     if (error) { onMessage(error.message); return; }
-    setVerdict("correct"); onAttempt(data as Attempt); onMessage(complete ? "Case closed. Your result was saved." : "Stage saved. Continue when you are ready.");
+    setVerdict("correct"); onAttempt({ ...attempt, current_stage: recovered.length, recovered_tokens: recovered, completed_at: complete ? new Date().toISOString() : null, stage_results: stageResults }); onMessage(complete ? "Case closed. Your result was saved." : "Stage saved. Continue when you are ready.");
   };
 
   const submitAppeal = async () => {
-    const { error } = await supabase.from("appeals").insert({ mission_attempt_id: attempt.id, stage_id: stageKey, student_explanation: explanation });
+    const { error } = await supabase.from("appeals").insert({ mission_attempt_id: attempt.id, stage_id: stageKey, item_attempt_id: lastItemAttemptId, student_explanation: explanation });
     if (!error) setAppealStatus("pending");
     onMessage(error ? error.message : "Challenge submitted. You can continue playing while your teacher reviews it."); setAppealOpen(false);
   };
@@ -95,8 +109,8 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   const continueWithGuidance = async () => {
     const recovered = [...attempt.recovered_tokens, stage.token]; const complete = recovered.length === stages.length;
     const stageResults = { ...attempt.stage_results, [stageKey]: { attempts: attemptsUsed, correct: false, guided: true } };
-    const { data, error } = await supabase.from("mission_attempts").update({ current_stage: recovered.length, recovered_tokens: recovered, stage_results: stageResults, completed_at: complete ? new Date().toISOString() : null }).eq("id", attempt.id).select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results").single();
-    if (error) onMessage(error.message); else { onAttempt(data as Attempt); setAppealOpen(false); setRevealed(false); setVerdict("idle"); onMessage("Guided answer saved. Opening the next piece of evidence."); }
+    const error = await persistItem({ credit: true, provisional: false, verdict: "guided", source: "teacher", hint: false, submitted: { guided: true } });
+    if (error) onMessage(error.message); else { onAttempt({ ...attempt, current_stage: recovered.length, recovered_tokens: recovered, completed_at: complete ? new Date().toISOString() : null, stage_results: stageResults }); setAppealOpen(false); setRevealed(false); setVerdict("idle"); onMessage("Guided answer saved. Opening the next piece of evidence."); }
   };
 
   if (solved) return <main className="mx-auto max-w-xl px-5 py-12"><div className="panel text-center"><p className="eyebrow">Mission complete</p><h1 className="mt-2 text-3xl font-black">Case closed.</h1><p className="mt-3 text-[#59677a]">Your progress and results have been saved for your teacher.</p><div className="mt-6 flex justify-center gap-2">{stages.map((item) => <span className="token token-ready" key={item.id}>{item.token}</span>)}</div></div></main>;

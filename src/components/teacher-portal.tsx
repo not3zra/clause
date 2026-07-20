@@ -501,37 +501,17 @@ export function TeacherPortal() {
     teacherComment: string,
   ) => {
     setBusy(true);
-    const { error: auditError } = await supabase
-      .from("appeal_decisions")
-      .insert({
-        appeal_id: appeal.id,
-        teacher_id: teacherId,
-        decision: status,
-        teacher_comment: teacherComment.trim(),
-      });
-    if (auditError) {
-      setBusy(false);
-      setMessage(auditError.message);
-      return;
-    }
-    const { data, error } = await supabase
-      .from("appeals")
-      .update({
-        status,
-        teacher_comment: teacherComment.trim(),
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq("id", appeal.id)
-      .select(
-        "id, stage_id, status, student_explanation, teacher_comment, mission_attempt:mission_attempts!inner(student_assignment:student_assignments!inner(student:student_profiles(full_name)))",
-      )
-      .single();
+    const { data, error } = await supabase.rpc("resolve_appeal", {
+      p_appeal_id: appeal.id,
+      p_decision: status,
+      p_teacher_comment: teacherComment.trim(),
+    });
     setBusy(false);
     if (error) setMessage(error.message);
     else {
       setAppeals((items) =>
         items.map((item) =>
-          item.id === appeal.id ? (data as unknown as Appeal) : item,
+          item.id === appeal.id ? { ...item, ...(data as unknown as Appeal) } : item,
         ),
       );
       setMessage(`Appeal ${status}.`);
