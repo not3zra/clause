@@ -6,8 +6,8 @@ import { validateClassInput } from "../lib/classes";
 import { createInvitePath, RoomInput, validateRoomInput } from "../lib/rooms";
 import { scoreForProgress } from "../lib/mission";
 import { RoomStage, validateRoomStages } from "../lib/room-stages";
-import { teacherSignUpOutcome } from "../lib/teacher-auth";
 import { AnalyticsAttempt, buildAnalytics, summarizeAttempts, toAnalyticsCsv } from "../lib/teacher-metrics";
+import { Turnstile } from "./turnstile";
 
 type TeacherClass = { id: string; name: string; grade: number };
 type Room = {
@@ -57,6 +57,7 @@ export function TeacherPortal() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [message, setMessage] = useState("");
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [classes, setClasses] = useState<TeacherClass[]>([]);
@@ -138,27 +139,17 @@ export function TeacherPortal() {
     event.preventDefault();
     setMessage("");
     setBusy(true);
-    const result =
-      mode === "sign-up"
-        ? await supabase.auth.signUp({
-            email,
-            password,
-            options: { data: { display_name: displayName } },
-          })
-        : await supabase.auth.signInWithPassword({ email, password });
+    if (mode === "sign-up") {
+      if (!turnstileToken) { setBusy(false); setMessage("Complete the security verification first."); return; }
+      const response = await fetch("/api/teacher-signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, displayName, turnstileToken }) });
+      const payload = await response.json() as { error?: string };
+      setBusy(false); if (!response.ok) { setMessage(payload.error ?? "Could not create this teacher account."); return; }
+      setMode("sign-in"); setMessage("Account created. Check your email to confirm it, then sign in."); return;
+    }
+    const result = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (result.error) setMessage(result.error.message);
-    else if (mode === "sign-up") {
-      const outcome = teacherSignUpOutcome({
-        userId: result.data.user?.id,
-        hasSession: Boolean(result.data.session),
-      });
-      if (outcome.kind === "signed-in") await loadClasses(outcome.userId);
-      else {
-        setMode("sign-in");
-        setMessage(outcome.message);
-      }
-    } else if (result.data.user) await loadClasses(result.data.user.id);
+    else if (result.data.user) await loadClasses(result.data.user.id);
   };
 
   const createClass = async (event: FormEvent) => {
@@ -561,6 +552,7 @@ export function TeacherPortal() {
                 />
               </label>
             )}
+            {mode === "sign-up" && <Turnstile onToken={setTurnstileToken} />}
             <label className="block text-sm font-bold">
               Email
               <input

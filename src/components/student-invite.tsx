@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { RoomStage, roomStageIsCorrect } from "../lib/room-stages";
 import type { GradingResult } from "../lib/grading";
 import { validateStudentEnrolment } from "../lib/student-sessions";
+import { Turnstile } from "./turnstile";
 
 type Invite = { assignmentId: string; room: { title: string; theme: string; stageCount: number }; version: { id: string; stages: Array<{ id: string; ordinal: number; title: string; prompt: string; rule: string; token: string; item_type: RoomStage["itemType"]; accepted_answers: string[]; rubric: string; hints: string[]; items: Array<{ prompt: string; accepted_answers: string[] }> }> } };
 type Attempt = { id: string; current_stage: number; recovered_tokens: string[]; completed_at: string | null; hints_used: number; stage_results: Record<string, unknown> };
@@ -12,6 +13,7 @@ export function StudentInvite({ inviteToken }: { inviteToken: string }) {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [form, setForm] = useState({ fullName: "", rollNumber: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [message, setMessage] = useState("Loading invite...");
 
   useEffect(() => { void (async () => { const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`); const payload = await response.json(); if (!response.ok) { setMessage(payload.error); return; } setInvite(payload); setAttempt((payload.attempt as Attempt | null) ?? null); setMessage(""); })(); }, [inviteToken]);
@@ -20,7 +22,8 @@ export function StudentInvite({ inviteToken }: { inviteToken: string }) {
     event.preventDefault(); const valid = validateStudentEnrolment(form);
     if (!valid.ok) { setMessage(Object.values(valid.errors).join(" ")); return; }
     setMessage("Creating your mission...");
-    const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(valid.value) });
+    if (!turnstileToken) { setMessage("Complete the security verification first."); return; }
+    const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...valid.value, turnstileToken }) });
     const payload = await response.json();
     if (!response.ok) { setMessage(payload.error ?? Object.values(payload.errors ?? {}).join(" ")); return; }
     const refreshed = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`);
@@ -32,7 +35,7 @@ export function StudentInvite({ inviteToken }: { inviteToken: string }) {
   if (message && !invite) return <main className="mx-auto max-w-xl px-5 py-16"><div className="panel" role="status">{message}</div></main>;
   if (!invite) return null;
   if (attempt) return <AssignedMission attempt={attempt} invite={invite} onAttempt={setAttempt} onMessage={setMessage} />;
-  return <main className="mx-auto max-w-xl px-5 py-12"><div className="panel"><p className="eyebrow">Room invite</p><h1 className="mt-2 text-3xl font-black">{invite.room.title}</h1><p className="mt-2 text-[#59677a]">Join this {invite.room.stageCount}-stage {invite.room.theme} mission. We collect only your name and roll number; this device can resume for 24 hours.</p><form className="mt-6 space-y-4" onSubmit={register}><label className="block text-sm font-bold">Full name<input className="input-shell mt-2" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required /></label><label className="block text-sm font-bold">Roll number<input className="input-shell mt-2" value={form.rollNumber} onChange={(e) => setForm({ ...form, rollNumber: e.target.value })} required /></label><button className="primary-action w-full" type="submit">Join mission</button></form>{message && <p className="mt-4 text-sm text-[#315b85]" role="status">{message}</p>}</div></main>;
+  return <main className="mx-auto max-w-xl px-5 py-12"><div className="panel"><p className="eyebrow">Room invite</p><h1 className="mt-2 text-3xl font-black">{invite.room.title}</h1><p className="mt-2 text-[#59677a]">Join this {invite.room.stageCount}-stage {invite.room.theme} mission. We collect only your name and roll number; this device can resume for 24 hours.</p><form className="mt-6 space-y-4" onSubmit={register}><label className="block text-sm font-bold">Full name<input className="input-shell mt-2" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required /></label><label className="block text-sm font-bold">Roll number<input className="input-shell mt-2" value={form.rollNumber} onChange={(e) => setForm({ ...form, rollNumber: e.target.value })} required /></label><Turnstile onToken={setTurnstileToken} /><button className="primary-action w-full" type="submit">Join mission</button></form>{message && <p className="mt-4 text-sm text-[#315b85]" role="status">{message}</p>}</div></main>;
 }
 
 function AssignedMission({ attempt, invite, onAttempt, onMessage }: { attempt: Attempt; invite: Invite; onAttempt: (attempt: Attempt) => void; onMessage: (message: string) => void }) {

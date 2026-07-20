@@ -6,6 +6,7 @@ import {
   parseGeneratedRoomDraft,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
+import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedTeacher(request: NextRequest) {
   const token = request.headers
@@ -56,6 +57,7 @@ async function auditGeneration(
 }
 
 export async function POST(request: NextRequest) {
+  if (!sameOrigin(request) || requestTooLarge(request)) return NextResponse.json({ error: "Invalid room generation request." }, { status: 400 });
   const input = await request.json().catch(() => null);
   if (!isRoomGenerationInput(input))
     return NextResponse.json(
@@ -68,6 +70,8 @@ export async function POST(request: NextRequest) {
       { error: "Sign in as a teacher to generate a room." },
       { status: 401 },
     );
+  const rate = await durableRateLimit(`generation:${teacherId}`, 12, 3600);
+  if (!rate.allowed) return NextResponse.json({ error: "Too many generation requests. Please retry later.", retryable: true }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
   const config = groqConfiguration(process.env);
   if (!config.configured) {
     await auditGeneration(
