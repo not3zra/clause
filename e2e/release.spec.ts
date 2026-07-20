@@ -7,4 +7,8 @@ test("public release surface has a healthy service and protected teacher entry",
   await page.goto("/");
   await expect(page).toHaveTitle(/Clause/);
   await expect(page.getByText("Teacher access")).toHaveCount(0);
+  const theme = page.getByRole("button", { name: "Use dark mode" });
+  await expect(theme).toHaveCount(1);
+  await theme.click();
+  await expect(page.getByRole("button", { name: "Use light mode" })).toHaveCount(1);
 });
