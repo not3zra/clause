@@ -109,7 +109,18 @@ export async function POST(request: NextRequest) {
       acceptedAnswers: { type: "array", items: { type: "string" } },
       rubric: { type: "string" },
       hints: { type: "array", items: { type: "string" } },
-      items: { type: "array" },
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["prompt", "acceptedAnswers"],
+          properties: {
+            prompt: { type: "string" },
+            acceptedAnswers: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
     },
   };
   const schema = {

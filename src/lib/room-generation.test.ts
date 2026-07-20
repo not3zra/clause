@@ -16,5 +16,7 @@ describe("generated room validation", () => {
   it("reads either Groq response text shape", () => {
     expect(groqOutputText({ output_text: "draft" })).toBe("draft");
     expect(groqOutputText({ output: [{ content: [{ type: "output_text", text: "nested draft" }] }] })).toBe("nested draft");
+    expect(groqOutputText({ output: [{ content: [{ type: "output_json", json: { draft: true } }] }] })).toBe('{"draft":true}');
+    expect(groqOutputText({ output: { content: [{ type: "output_text", text: "object output" }] } })).toBe("object output");
   });
 });
