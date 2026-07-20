@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { fallbackGrade, isGradingInput, isGradingResult, prepareGradingPayload } from "@/lib/grading";
 import { groqConfiguration } from "../../../../scripts/groq-config.mjs";
+import { resolveStudentSession, studentSessionCookie } from "@/lib/student-session-server";
 
 const studentRequests = new Map<string, number[]>();
 const globalRequests: number[] = [];
@@ -13,6 +14,8 @@ function withinLimit(requests: number[], windowMs: number, limit: number, now: n
 }
 
 async function authenticatedStudent(request: NextRequest) {
+  const cookieSession = await resolveStudentSession(request.cookies.get(studentSessionCookie)?.value);
+  if (cookieSession) return cookieSession.studentAssignmentId;
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return null;
   const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });

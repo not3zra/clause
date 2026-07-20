@@ -1,49 +1,41 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { RoomStage, roomStageIsCorrect } from "../lib/room-stages";
 import type { GradingResult } from "../lib/grading";
-import { validateStudentRegistration } from "../lib/students";
+import { validateStudentEnrolment } from "../lib/student-sessions";
 
 type Invite = { assignmentId: string; room: { title: string; theme: string; stageCount: number }; version: { id: string; stages: Array<{ id: string; ordinal: number; title: string; prompt: string; rule: string; token: string; item_type: RoomStage["itemType"]; accepted_answers: string[]; rubric: string; hints: string[]; items: Array<{ prompt: string; accepted_answers: string[] }> }> } };
 type Attempt = { id: string; current_stage: number; recovered_tokens: string[]; completed_at: string | null; hints_used: number; stage_results: Record<string, unknown> };
 
 export function StudentInvite({ inviteToken }: { inviteToken: string }) {
-  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!), []);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const [form, setForm] = useState({ fullName: "", rollNumber: "", username: "", password: "" });
+  const [form, setForm] = useState({ fullName: "", rollNumber: "" });
   const [message, setMessage] = useState("Loading invite...");
 
-  const loadAttempt = useCallback(async (assignmentId: string) => {
-    const { data: enrolment } = await supabase.from("student_assignments").select("id").eq("assignment_id", assignmentId).maybeSingle();
-    if (!enrolment) return;
-    const { data, error } = await supabase.from("mission_attempts").select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results").eq("student_assignment_id", enrolment.id).single();
-    if (error) setMessage(error.message); else { setAttempt(data as Attempt); setMessage(""); }
-  }, [supabase]);
-
-  useEffect(() => { void (async () => { const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`); const payload = await response.json(); if (!response.ok) { setMessage(payload.error); return; } setInvite(payload); setMessage(""); const { data: { user } } = await supabase.auth.getUser(); if (user) await loadAttempt(payload.assignmentId); })(); }, [inviteToken, supabase, loadAttempt]);
+  useEffect(() => { void (async () => { const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`); const payload = await response.json(); if (!response.ok) { setMessage(payload.error); return; } setInvite(payload); setAttempt((payload.attempt as Attempt | null) ?? null); setMessage(""); })(); }, [inviteToken]);
 
   const register = async (event: FormEvent) => {
-    event.preventDefault(); const valid = validateStudentRegistration(form);
+    event.preventDefault(); const valid = validateStudentEnrolment(form);
     if (!valid.ok) { setMessage(Object.values(valid.errors).join(" ")); return; }
     setMessage("Creating your mission...");
     const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(valid.value) });
     const payload = await response.json();
     if (!response.ok) { setMessage(payload.error ?? Object.values(payload.errors ?? {}).join(" ")); return; }
-    const { error } = await supabase.auth.signInWithPassword({ email: payload.authEmail, password: valid.value.password });
-    if (error) { setMessage(error.message); return; }
-    await loadAttempt(payload.assignmentId); setMessage("Your mission is ready. Start when you are ready.");
+    const refreshed = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`);
+    const resumed = await refreshed.json();
+    if (!refreshed.ok || !resumed.attempt) { setMessage(resumed.error ?? "Your session could not be started."); return; }
+    setAttempt(resumed.attempt as Attempt); setMessage("Your mission is ready. Start when you are ready.");
   };
 
   if (message && !invite) return <main className="mx-auto max-w-xl px-5 py-16"><div className="panel" role="status">{message}</div></main>;
   if (!invite) return null;
-  if (attempt) return <AssignedMission attempt={attempt} invite={invite} onAttempt={setAttempt} onMessage={setMessage} supabase={supabase} />;
-  return <main className="mx-auto max-w-xl px-5 py-12"><div className="panel"><p className="eyebrow">Room invite</p><h1 className="mt-2 text-3xl font-black">{invite.room.title}</h1><p className="mt-2 text-[#59677a]">Register to join this {invite.room.stageCount}-stage {invite.room.theme} mission. We do not collect your email address.</p><form className="mt-6 space-y-4" onSubmit={register}><label className="block text-sm font-bold">Full name<input className="input-shell mt-2" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required /></label><label className="block text-sm font-bold">Roll number<input className="input-shell mt-2" value={form.rollNumber} onChange={(e) => setForm({ ...form, rollNumber: e.target.value })} required /></label><label className="block text-sm font-bold">Username<input className="input-shell mt-2" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required /></label><label className="block text-sm font-bold">Password<input className="input-shell mt-2" type="password" minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label><button className="primary-action w-full" type="submit">Join mission</button></form>{message && <p className="mt-4 text-sm text-[#315b85]" role="status">{message}</p>}</div></main>;
+  if (attempt) return <AssignedMission attempt={attempt} invite={invite} onAttempt={setAttempt} onMessage={setMessage} />;
+  return <main className="mx-auto max-w-xl px-5 py-12"><div className="panel"><p className="eyebrow">Room invite</p><h1 className="mt-2 text-3xl font-black">{invite.room.title}</h1><p className="mt-2 text-[#59677a]">Join this {invite.room.stageCount}-stage {invite.room.theme} mission. We collect only your name and roll number; this device can resume for 24 hours.</p><form className="mt-6 space-y-4" onSubmit={register}><label className="block text-sm font-bold">Full name<input className="input-shell mt-2" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required /></label><label className="block text-sm font-bold">Roll number<input className="input-shell mt-2" value={form.rollNumber} onChange={(e) => setForm({ ...form, rollNumber: e.target.value })} required /></label><button className="primary-action w-full" type="submit">Join mission</button></form>{message && <p className="mt-4 text-sm text-[#315b85]" role="status">{message}</p>}</div></main>;
 }
 
-function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { attempt: Attempt; invite: Invite; onAttempt: (attempt: Attempt) => void; onMessage: (message: string) => void; supabase: ReturnType<typeof createBrowserClient> }) {
+function AssignedMission({ attempt, invite, onAttempt, onMessage }: { attempt: Attempt; invite: Invite; onAttempt: (attempt: Attempt) => void; onMessage: (message: string) => void }) {
   const stages: RoomStage[] = invite.version.stages.sort((a, b) => a.ordinal - b.ordinal).map((item) => ({ id: item.id, ordinal: item.ordinal, title: item.title, prompt: item.prompt, rule: item.rule, token: item.token, itemType: item.item_type, acceptedAnswers: item.accepted_answers, rubric: item.rubric, hints: item.hints, items: item.items?.map((child) => ({ prompt: child.prompt, acceptedAnswers: child.accepted_answers })) }));
   const [answer, setAnswer] = useState(stages[0]?.prompt ?? "");
   const [sorts, setSorts] = useState<Record<string, string>>({});
@@ -64,31 +56,26 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   const persistItem = async ({ credit, provisional, verdict: itemVerdict, source, hint, submitted }: { credit: boolean; provisional: boolean; verdict: "correct" | "correct_with_improvement" | "revise" | "provisional" | "guided"; source: "ai" | "fallback" | "teacher" | "deterministic"; hint: boolean; submitted: unknown }) => {
     const actionId = submissionId.current ?? crypto.randomUUID();
     submissionId.current = actionId;
-    const { data, error } = await supabase.rpc("submit_mission_item", {
-      p_attempt_id: attempt.id, p_stage_id: stage.id, p_answer: submitted,
-      p_verdict: itemVerdict, p_recommendation: aiFeedback ?? {}, p_source: source,
-      p_provisional_credit: provisional, p_credit_awarded: credit, p_hint_used: hint,
-      p_idempotency_key: `${attempt.id}:${stageKey}:${actionId}`,
-    });
-    if (!error) { submissionId.current = null; setLastItemAttemptId((data as { id?: string } | null)?.id ?? null); }
-    return error;
+    const response = await fetch("/api/student-mission", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stageId: stage.id, answer: submitted, verdict: itemVerdict, recommendation: aiFeedback ?? {}, source, provisionalCredit: provisional, creditAwarded: credit, hintUsed: hint, idempotencyKey: `${attempt.id}:${stageKey}:${actionId}` }) });
+    const payload = await response.json() as { itemAttempt?: { id?: string }; error?: string };
+    if (response.ok) { submissionId.current = null; setLastItemAttemptId(payload.itemAttempt?.id ?? null); return null; }
+    return { message: payload.error ?? "Could not save this answer." };
   };
 
   useEffect(() => {
     void (async () => {
-      const result = await supabase.from("appeals").select("status").eq("mission_attempt_id", attempt.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
-      const latestAppeal = result.data as { status: string } | null;
-      setAppealStatus(latestAppeal?.status ?? null);
+      const result = await fetch("/api/student-mission");
+      const payload = await result.json() as { appeals?: Array<{ status: string }> };
+      setAppealStatus(payload.appeals?.[0]?.status ?? null);
     })();
-  }, [attempt.id, supabase]);
+  }, [attempt.id]);
 
   const submit = async () => {
     if (solved) return;
     const submitted = stage.itemType === "deterministic" ? sorts : answer;
     let correct = roomStageIsCorrect(stage, submitted);
     if (stage.itemType !== "deterministic") {
-      const { data: session } = await supabase.auth.getSession();
-      const response = await fetch("/api/grading", { method: "POST", headers: { "Content-Type": "application/json", ...(session.session ? { Authorization: `Bearer ${session.session.access_token}` } : {}) }, body: JSON.stringify({ original: stage.prompt, submitted, targetRule: stage.rule, rubric: stage.rubric, grade: 7, subtopic: "grammar" }) });
+      const response = await fetch("/api/grading", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ original: stage.prompt, submitted, targetRule: stage.rule, rubric: stage.rubric, grade: 7, subtopic: "grammar" }) });
       const graded = await response.json() as GradingResult | { error: string };
       if (response.ok && "verdict" in graded) { setAiFeedback(graded); correct = graded.verdict === "correct" || graded.verdict === "correct_with_improvement" || graded.verdict === "provisional"; }
     }
@@ -101,9 +88,10 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   };
 
   const submitAppeal = async () => {
-    const { error } = await supabase.from("appeals").insert({ mission_attempt_id: attempt.id, stage_id: stageKey, item_attempt_id: lastItemAttemptId, student_explanation: explanation });
-    if (!error) setAppealStatus("pending");
-    onMessage(error ? error.message : "Challenge submitted. You can continue playing while your teacher reviews it."); setAppealOpen(false);
+    const response = await fetch("/api/student-mission", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "appeal", stageId: stageKey, itemAttemptId: lastItemAttemptId, explanation }) });
+    const payload = await response.json() as { error?: string };
+    if (response.ok) setAppealStatus("pending");
+    onMessage(response.ok ? "Challenge submitted. You can continue playing while your teacher reviews it." : payload.error ?? "Could not submit this challenge."); setAppealOpen(false);
   };
 
   const continueWithGuidance = async () => {

@@ -18,7 +18,7 @@ type Room = {
   validated_at: string | null;
   versionId?: string;
 };
-type Assignment = { invite_token: string; marks_visible: boolean };
+type Assignment = { id?: string; invite_token: string; marks_visible: boolean };
 type AttemptRow = {
   id: string;
   current_stage: number;
@@ -454,7 +454,7 @@ export function TeacherPortal() {
     }
     setBusy(true);
     const published = await supabase
-      .rpc("publish_room_version", {
+      .rpc("publish_room_version_with_invite", {
         p_room_id: room.id,
         p_marks_visible: roomInput.marksVisible,
       })
@@ -474,7 +474,9 @@ export function TeacherPortal() {
         marks_visible: boolean;
       };
       setRoom(roomResult.data as Room);
+      const assignmentResult = await supabase.from("assignments").select("id").eq("room_id", room.id).single();
       setAssignment({
+        id: assignmentResult.data?.id,
         invite_token: frozen.invite_token,
         marks_visible: frozen.marks_visible,
       });
@@ -493,6 +495,15 @@ export function TeacherPortal() {
     } catch {
       setMessage(`Copy this room-specific invite link: ${url}`);
     }
+  };
+
+  const closeInvite = async () => {
+    if (!assignment?.id) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("close_assignment_invite", { p_assignment_id: assignment.id });
+    setBusy(false);
+    if (error) setMessage(error.message);
+    else setMessage("Invite closed. New joins and active student sessions are revoked; recorded progress remains available.");
   };
 
   const resolveAppeal = async (
@@ -865,13 +876,10 @@ export function TeacherPortal() {
                 {room.status === "published" ? "Published" : "Publish room"}
               </button>
               {assignment && (
-                <button
-                  className="primary-action"
-                  onClick={copyInvite}
-                  type="button"
-                >
-                  Copy home invite link
-                </button>
+                <>
+                  <button className="primary-action" onClick={copyInvite} type="button">Copy home invite link</button>
+                  <button className="ghost-action" disabled={busy || !assignment.id} onClick={closeInvite} type="button">Close invite</button>
+                </>
               )}
             </div>
             {assignment && (
