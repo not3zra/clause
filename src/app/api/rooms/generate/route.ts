@@ -5,6 +5,7 @@ import {
   generationRepairInstruction,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
+  providerStageCountSchema,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
 import { generationFailureCode, providerFailureCode } from "@/lib/generation-diagnostics";
@@ -146,8 +147,7 @@ export async function POST(request: NextRequest) {
       },
       stages: {
         type: "array",
-        minItems: input.stageCount,
-        maxItems: input.stageCount,
+        ...providerStageCountSchema(),
         items: stageSchema,
       },
     },
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
               theme: input.theme.trim(),
               stageCount: input.stageCount,
               instructions: input.instructions?.trim() ?? "",
-              repairInstructions: generationAttempt ? generationRepairInstruction(repairErrors) : "",
+              repairInstructions: generationAttempt ? generationRepairInstruction(repairErrors, input.stageCount) : "",
             }),
           },
         ],

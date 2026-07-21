@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationRepairInstruction, groqOutputText, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { generationRepairInstruction, groqOutputText, providerStageCountSchema, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -24,8 +24,12 @@ describe("generated room validation", () => {
     expect(groqOutputText({ output: { content: [{ type: "output_text", text: "object output" }] } })).toBe("object output");
   });
   it("turns validation failures into an explicit complete-draft retry instruction", () => {
-    const instruction = generationRepairInstruction(["Stage 1 needs an accepted answer.", "Each stage needs a unique token."]);
+    const instruction = generationRepairInstruction(["Expected 3 stages.", "Stage 1 needs an accepted answer.", "Each stage needs a unique token."], 3);
+    expect(instruction).toContain("exactly 3 stages");
     expect(instruction).toContain("Stage 1 needs an accepted answer.");
     expect(instruction).toContain("Every stage must have a non-empty token");
+  });
+  it("keeps the provider schema permissive enough for server-side repair", () => {
+    expect(providerStageCountSchema()).toEqual({ minItems: 1 });
   });
 });
