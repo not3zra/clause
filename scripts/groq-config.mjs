@@ -8,7 +8,7 @@ function positiveInteger(value, fallback) {
 }
 
 export function groqConfiguration(environment) {
-  const model = environment.GROQ_MODEL || APPROVED_MODEL;
+  const model = (environment.GROQ_MODEL || APPROVED_MODEL).trim();
   if (model !== APPROVED_MODEL) throw new Error(`Model ${model} is not approved for this demo.`);
   return {
     configured: Boolean(environment.GROQ_API_KEY?.trim()),

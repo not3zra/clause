@@ -66,6 +66,11 @@ export function parseGeneratedRoomDraft(outputText: string, stageCount: number, 
 
 export function groqOutputText(data: unknown) {
   const response = data as { output_text?: unknown; output?: unknown; choices?: unknown };
+  const choices = Array.isArray(response?.choices) ? response.choices : [];
+  for (const choice of choices) {
+    const content = (choice as { message?: { content?: unknown } } | null)?.message?.content;
+    if (typeof content === "string") return content;
+  }
   if (typeof response?.output_text === "string") return response.output_text;
   const output = Array.isArray(response?.output) ? response.output : [response?.output];
   for (const item of output) {
@@ -79,7 +84,6 @@ export function groqOutputText(data: unknown) {
       if (value.type === "output_json" && value.json !== undefined) return JSON.stringify(value.json);
     }
   }
-  const choices = Array.isArray(response?.choices) ? response.choices : [];
   for (const choice of choices) {
     const calls = (choice as { message?: { tool_calls?: unknown } } | null)?.message?.tool_calls;
     if (!Array.isArray(calls)) continue;
@@ -94,6 +98,12 @@ export function groqOutputText(data: unknown) {
 export function groqFailedGenerationText(data: unknown) {
   const failed = (data as { error?: { failed_generation?: unknown } } | null)?.error?.failed_generation;
   return typeof failed === "string" ? failed : "";
+}
+
+export function providerStageCountSchema() {
+  // Let our local validator inspect short drafts and send the model a targeted
+  // repair instruction. Groq can reject a short draft before that retry runs.
+  return { minItems: 1 };
 }
 
 export function providerResponseFormat(stageCount: 3 | 4) {
@@ -139,7 +149,7 @@ export function providerResponseFormat(stageCount: 3 | 4) {
           story: { type: "string", minLength: 1 },
           grade: { type: "integer", minimum: 6, maximum: 9 },
           difficulty: { type: "string", enum: ["supported", "standard", "stretch"] },
-          stages: { type: "array", minItems: stageCount, maxItems: stageCount, items: stageSchema },
+          stages: { type: "array", ...providerStageCountSchema(), items: stageSchema },
         },
       },
     },
