@@ -120,6 +120,14 @@ export function fallbackGeneratedRoomDraft(input: RoomGenerationInput): Generate
   };
 }
 
+export function fallbackRoomGenerationResponse(input: RoomGenerationInput) {
+  return {
+    draft: fallbackGeneratedRoomDraft(input),
+    source: "fallback" as const,
+    validation: "fallback" as const,
+  };
+}
+
 export function isRoomGenerationInput(value: unknown): value is RoomGenerationInput {
   const input = value as Partial<RoomGenerationInput>;
   return Boolean(input && Number.isInteger(input.grade) && input.grade! >= 6 && input.grade! <= 9 && typeof input.topic === "string" && input.topic.trim() && typeof input.subtopic === "string" && input.subtopic.trim() && typeof input.theme === "string" && input.theme.trim() && (input.stageCount === 3 || input.stageCount === 4) && (input.instructions === undefined || (typeof input.instructions === "string" && input.instructions.length <= 500)));
