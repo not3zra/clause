@@ -37,6 +37,16 @@ Clause turns grammar practice into short, teacher-reviewed missions. Teachers ge
 - **Teacher analytics** — teachers can inspect progress, first-attempt accuracy, scores, elapsed time, mastery signals, and appeal history for their own rooms.
 - **Safety by design** — row-level access controls, server-side authorization, rate limiting, Turnstile support, and audit records protect classroom workflows.
 
+## AI integration and guardrails
+
+Clause uses Groq from server-side routes for room generation and semantic grading. The approved runtime model is `openai/gpt-oss-20b`, configured with `GROQ_API_KEY` and an optional `GROQ_MODEL` override constrained by the application.
+
+AI is deliberately scoped to tasks where semantic interpretation adds value: generated room drafts, free-text grammar feedback, and appeal support. Deterministic sort and sequence mechanics remain app-graded, not model-graded. Requests use structured outputs, validate generated stages before publication, exclude student identity data, apply rate limits, and fall back to prepared instructional feedback when the provider cannot respond. See [docs/AI_GUARDRAILS.md](docs/AI_GUARDRAILS.md) and [docs/SECURITY_OPERATIONS.md](docs/SECURITY_OPERATIONS.md) for operational detail.
+
+### GPT-5.6 and Codex
+
+GPT-5.6 is not a runtime dependency of the deployed Clause application. It accelerated development through Codex: tracing the product requirements into the teacher/student flows, implementing and testing persistence and retry behavior, tightening the two-layer design system, generating the supporting documentation, and iterating on verification failures. The runtime model choice is documented separately above so the project makes a clear distinction between the development workflow (Codex, backed by GPT-5.6) and the deployed AI path (Groq, `openai/gpt-oss-20b`).
+
 ## Architecture
 
 ```mermaid
@@ -92,10 +102,7 @@ git clone https://github.com/not3zra/clause.git
 cd clause
 npm ci
 copy .env.example .env.local
-npm run dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000).
 
 > On macOS or Linux, use `cp .env.example .env.local` instead of `copy`.
 
@@ -110,13 +117,37 @@ Populate `.env.local` from `.env.example`. Never commit real values.
 | Upstash | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Durable request limits |
 | Turnstile | `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Teacher sign-up protection |
 
-Apply Supabase migrations in filename order before testing the full assigned-room flow:
+The browser only ever receives the publishable key. Keep `SUPABASE_SECRET_KEY`, `GROQ_API_KEY`, `TURNSTILE_SECRET_KEY`, and `UPSTASH_REDIS_REST_TOKEN` server-side.
+
+### Apply database migrations
+
+Apply the SQL files in `supabase/migrations` to the connected Supabase project, in filename order:
 
 ```text
 supabase/migrations/
 ```
 
-## Quality checks
+These create the teacher, room, assignment, attempt, appeal, security, and room-version schema. The room-version migration also backfills the built-in three-stage grammar room used by the demo, so no separate seed script is required.
+
+### Start the app
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Sample data and demo paths
+
+- **Guest sample:** use **Try sample room** on the landing page. It runs without credentials and includes prepared retry and appeal states.
+- **Teacher flow:** sign up in the teacher area, create a class, draft a room, complete review/validation, then publish and copy the home invite link.
+- **Student flow:** open a published invite link, register with the requested student details, and continue a saved mission from the current stage.
+
+The sample room contains deterministic fallback content. It remains fully usable if AI configuration is absent, rate-limited, or unavailable — the core loop is demonstrable without a live provider.
+
+## Testing and verification
+
+Run the primary quality checks before a demo or deployment:
 
 ```bash
 npm run lint
@@ -126,11 +157,18 @@ npm run build
 npm run test:e2e
 ```
 
-For a deployment smoke test:
+Useful configuration and deployment checks:
 
 ```bash
+npm run test:config
+npm run verify:supabase
+npm run test:ai-config
+npm run verify:ai
+npm run test:demo-smoke
 SMOKE_URL=https://clause-learn.vercel.app npm run smoke:deployment
 ```
+
+The automated suite covers the guest journey through retry, appeal, stage completion, and final lock; schema and security helpers; AI configuration; and deployment smoke validation.
 
 ## Project structure
 
@@ -151,9 +189,22 @@ scripts/               Configuration and deployment smoke checks
 - Supabase **RLS policies** scope student data to the student and teacher data to rooms they own.
 - The final clue is validated on the server; collecting the last token alone does not complete a mission.
 
+## Key implementation decisions
+
+- **Teacher control before play:** generated rooms are drafts and require review/validation before publishing.
+- **Three attempts, then teaching:** a wrong free-text answer receives targeted feedback; after the third attempt, the correct answer and concise reasoning appear and the student can continue with guidance.
+- **Fairness over brittle matching:** deterministic mechanics are scored locally, while free-text judgments can be appealed and resolved by the teacher.
+- **Privacy by design:** students do not provide an email address; AI routes send only item/rubric context and the submitted answer, never learner identity data.
+- **Theme separation:** the Clause shell is a clean learning platform; Detective Office, Cursed Castle, and Sci-Fi Lab styling belongs only inside an active room player.
+- **Resilient demo behavior:** deterministic fallback content means the key learning loop remains demonstrable even when an external AI provider is unavailable.
+
 ## Deployment
 
 Clause is designed for Vercel with Supabase, Groq, Upstash, and Turnstile. Set the `.env.example` variables in Vercel for both Production and Preview, apply migrations before a migration-bearing release, then run the deployment smoke test. See the [deployment runbook](docs/DEPLOYMENT.md) for the operational checklist and rollback guidance.
+
+## Product and implementation notes
+
+See [docs/PRD.md](docs/PRD.md) for MVP requirements and [docs/UI_UX_IMPLEMENTATION.md](docs/UI_UX_IMPLEMENTATION.md) for the UI implementation notes.
 
 ## Contributing
 
