@@ -58,8 +58,14 @@ export function groqOutputText(data: unknown) {
   return "";
 }
 
-export function generationRepairInstruction(errors: string[]) {
-  return `Your previous draft was rejected for: ${errors.join(" ")} Return a complete replacement JSON draft, not commentary. Every stage must have a non-empty token that is unique within the room, at least one accepted answer, at least one hint, and all required learning-content fields. Deterministic items must each have exactly one answer: Agrees or Needs revision.`;
+export function providerStageCountSchema() {
+  // Let our validator inspect partial drafts and give the model a targeted repair
+  // instruction. Groq otherwise rejects a short draft before we can retry it.
+  return { minItems: 1 };
+}
+
+export function generationRepairInstruction(errors: string[], stageCount: number) {
+  return `Your previous draft was rejected for: ${errors.join(" ")} Return a complete replacement JSON draft with exactly ${stageCount} stages, not commentary. Every stage must have a non-empty token that is unique within the room, at least one accepted answer, at least one hint, and all required learning-content fields. Deterministic items must each have exactly one answer: Agrees or Needs revision.`;
 }
 
 export type RoomGenerationInput = { grade: number; topic: string; subtopic: string; theme: string; stageCount: 3 | 4; instructions?: string };
