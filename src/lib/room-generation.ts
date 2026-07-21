@@ -40,19 +40,17 @@ export function parseGeneratedRoomDraft(outputText: string, stageCount: number, 
   catch { return { ok: false, errors: ["The generation response was not valid JSON."] }; }
 }
 
-export function groqOutputText(data: unknown) {
-  const response = data as { output_text?: unknown; output?: unknown };
-  if (typeof response?.output_text === "string") return response.output_text;
-  const output = Array.isArray(response?.output) ? response.output : [response?.output];
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const content = (item as { content?: unknown }).content;
-    const parts = Array.isArray(content) ? content : [content];
+export function geminiOutputText(data: unknown) {
+  const response = data as { candidates?: unknown };
+  const candidates = Array.isArray(response?.candidates) ? response.candidates : [];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const content = (candidate as { content?: unknown }).content;
+    const parts = Array.isArray((content as { parts?: unknown })?.parts) ? (content as { parts: unknown[] }).parts : [];
     for (const part of parts) {
       if (!part || typeof part !== "object") continue;
-      const value = part as { type?: unknown; text?: unknown; json?: unknown };
-      if (value.type === "output_text" && typeof value.text === "string") return value.text;
-      if (value.type === "output_json" && value.json !== undefined) return JSON.stringify(value.json);
+      const value = part as { text?: unknown };
+      if (typeof value.text === "string") return value.text;
     }
   }
   return "";

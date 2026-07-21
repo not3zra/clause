@@ -4,7 +4,7 @@
 
 Clause protects teacher accounts, student enrolment records, invite tokens, persisted mission attempts, and API credentials. The primary threats are account-enumeration and credential abuse, invite guessing and repeated enrolment, cross-tenant reads, abusive AI requests, forged browser writes, and accidental disclosure through logs, exports, or source control.
 
-RLS remains the database access boundary. Browser clients use only the Supabase publishable key; `SUPABASE_SECRET_KEY`, `GROQ_API_KEY`, `TURNSTILE_SECRET_KEY`, and `UPSTASH_REDIS_REST_TOKEN` are server-only Vercel variables. Never prefix them with `NEXT_PUBLIC_`, log them, include them in errors, or export them in CSV.
+RLS remains the database access boundary. Browser clients use only the Supabase publishable key; `SUPABASE_SECRET_KEY`, `GEMINI_API_KEY`, `TURNSTILE_SECRET_KEY`, and `UPSTASH_REDIS_REST_TOKEN` are server-only Vercel variables. Never prefix them with `NEXT_PUBLIC_`, log them, include them in errors, or export them in CSV.
 
 ## Controls
 
@@ -12,7 +12,7 @@ RLS remains the database access boundary. Browser clients use only the Supabase 
 - Upstash counters use an atomic Redis script with TTLs. Auth, enrolment, invite, generation, grading, and appeal paths must return `429` when their budget is exhausted.
 - Browser writes require same-origin requests, bounded request bodies, schema validation, and generic safe error messages.
 - CSP, frame denial, strict referrer policy, content-type protection, and a restrictive permissions policy are sent on every route.
-- Groq receives only grammar content required to grade or generate a room. Do not send student names, roll numbers, cookies, IP addresses, or identifiers.
+- Gemini receives only grammar content required to grade or generate a room. Do not send student names, roll numbers, cookies, IP addresses, or identifiers.
 - CSV uses formula-injection escaping and is rendered only from teacher-authorized rows.
 
 ## Retention and deletion
@@ -25,4 +25,4 @@ Log only a route name, status class, request correlation ID, and non-sensitive p
 
 ## Free-tier operational limits
 
-Monitor Turnstile verification traffic, Upstash command/storage usage, Supabase database/API quotas, Groq request budgets, and Vercel function usage. If Upstash or Turnstile is unavailable, protected writes fail closed; do not remove these controls as a reliability workaround. Review rate-limit rejection volume and provider errors weekly during the hackathon period.
+Monitor Turnstile verification traffic, Upstash command/storage usage, Supabase database/API quotas, Gemini request budgets, and Vercel function usage. If Upstash or Turnstile is unavailable, protected writes fail closed; do not remove these controls as a reliability workaround. Review rate-limit rejection volume and provider errors weekly during the hackathon period.

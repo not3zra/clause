@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { fallbackGrade, isGradingInput, isGradingResult, prepareGradingPayload } from "@/lib/grading";
-import { groqConfiguration } from "../../../../scripts/groq-config.mjs";
+import { geminiOutputText } from "@/lib/room-generation";
+import { geminiConfiguration } from "../../../../scripts/gemini-config.mjs";
 import { resolveStudentSession, studentSessionCookie } from "@/lib/student-session-server";
 import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
@@ -24,17 +25,17 @@ export async function POST(request: NextRequest) {
   const studentId = await authenticatedStudent(request);
   if (!studentId) return NextResponse.json({ error: "Sign in to check an answer." }, { status: 401 });
   try {
-    const config = groqConfiguration(process.env);
+    const config = geminiConfiguration(process.env);
     const rate = await durableRateLimit(`grading:${studentId}`, config.perStudentHourlyLimit, 3600);
     if (!rate.allowed) return NextResponse.json({ ...fallback, feedback: "AI checking is temporarily rate-limited. This safe feedback is ready now.", source: "fallback" }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
     if (!config.configured) return NextResponse.json(fallback);
-    const response = await fetch("https://api.groq.com/openai/v1/responses", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-      body: JSON.stringify({ model: config.model, input: [{ role: "system", content: "Grade only the target grammar rule. Ignore unrelated spelling or punctuation unless it changes the rule. Return provisional credit when uncertain. Keep all visible feedback concise and educational." }, { role: "user", content: JSON.stringify(safePayload) }], text: { format: { type: "json_schema", name: "grammar_verdict", strict: true, schema: { type: "object", additionalProperties: false, required: ["verdict", "ruleCheck", "feedback", "hint", "provisionalCredit"], properties: { verdict: { type: "string", enum: ["correct", "correct_with_improvement", "revise", "provisional"] }, ruleCheck: { type: "string" }, feedback: { type: "string" }, hint: { type: "string" }, provisionalCredit: { type: "boolean" } } } } }
-      }),
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY!)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: "Grade only the target grammar rule. Ignore unrelated spelling or punctuation unless it changes the rule. Return provisional credit when uncertain. Keep all visible feedback concise and educational." }] }, contents: [{ role: "user", parts: [{ text: JSON.stringify(safePayload) }] }], generationConfig: { responseMimeType: "application/json", responseJsonSchema: { type: "object", additionalProperties: false, required: ["verdict", "ruleCheck", "feedback", "hint", "provisionalCredit"], properties: { verdict: { type: "string", enum: ["correct", "correct_with_improvement", "revise", "provisional"] }, ruleCheck: { type: "string" }, feedback: { type: "string" }, hint: { type: "string" }, provisionalCredit: { type: "boolean" } } } } }),
     });
     const data = await response.json();
-    const outputText = typeof data.output_text === "string" ? data.output_text : data.output?.flatMap((item: { content?: Array<{ type?: string; text?: string }> }) => item.content ?? []).find((content: { type?: string; text?: string }) => content.type === "output_text")?.text;
+    if (!response.ok) return NextResponse.json(fallback);
+    const outputText = geminiOutputText(data);
     const parsed = typeof outputText === "string" ? JSON.parse(outputText) : null;
     return isGradingResult(parsed) ? NextResponse.json({ ...parsed, source: "ai" }) : NextResponse.json(fallback);
   } catch { return NextResponse.json(fallback); }
