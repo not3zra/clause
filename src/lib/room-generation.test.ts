@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fallbackGeneratedRoomDraft, fallbackRoomGenerationResponse, generationRepairInstruction, groqFailedGenerationText, groqOutputText, roomGenerationTool, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { fallbackGeneratedRoomDraft, fallbackRoomGenerationResponse, generationRepairInstruction, groqFailedGenerationText, groqOutputText, providerResponseFormat, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -34,10 +34,10 @@ describe("generated room validation", () => {
     expect(instruction).toContain("Stage 1 needs an accepted answer.");
     expect(instruction).toContain("Every stage must have a non-empty token");
   });
-  it("uses a function schema that requires the requested number of stages", () => {
-    expect(roomGenerationTool(3)).toMatchObject({
-      type: "function",
-      function: { name: "create_room_draft", parameters: { properties: { stages: { minItems: 3, maxItems: 3 } } } },
+  it("uses JSON Schema mode with the requested exact stage count", () => {
+    expect(providerResponseFormat(3)).toMatchObject({
+      type: "json_schema",
+      json_schema: { strict: true, schema: { properties: { stages: { minItems: 3, maxItems: 3 } } } },
     });
   });
   it("tells free-text stages to include the required empty items array", () => {

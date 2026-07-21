@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationFailureCode, providerFailureCode, providerFailureDetails, shouldRetryProviderFailure } from "./generation-diagnostics";
+import { generationFailureCode, groqRetryDelaySeconds, providerFailureCode, providerFailureDetails, shouldRetryProviderFailure } from "./generation-diagnostics";
 
 describe("generation failure diagnostics", () => {
   it("uses safe codes without provider response details", () => {
@@ -32,5 +32,11 @@ describe("provider failure classification", () => {
   it("keeps provider diagnostics safe while preserving actionable categories", () => {
     expect(providerFailureDetails({ error: { type: "invalid_request_error", code: "bad_request", message: "Request rejected because the account has exhausted its daily token quota." } })).toEqual({ type: "invalid_request_error", code: "bad_request", category: "quota_or_billing" });
     expect(providerFailureDetails({ error: { type: "unsafe value", code: "contains spaces", message: "Invalid request parameter: input." } })).toEqual({ category: "request_format" });
+  });
+
+  it("uses a bounded provider retry delay without retaining the provider message", () => {
+    expect(groqRetryDelaySeconds("Please try again in 1.5s.")).toBe(1.5);
+    expect(groqRetryDelaySeconds("Please try again in 90s.")).toBe(30);
+    expect(groqRetryDelaySeconds("Rate limited.")).toBe(5);
   });
 });
