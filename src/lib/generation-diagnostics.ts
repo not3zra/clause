@@ -24,3 +24,26 @@ export function providerFailureCode(status: number, message: unknown) {
 export function shouldRetryProviderFailure(status: number, code: string) {
   return status !== 429 && (code === "provider_http_400" || status >= 500);
 }
+
+function safeProviderField(value: unknown) {
+  return typeof value === "string" && /^[a-z0-9._-]{1,64}$/i.test(value) ? value : undefined;
+}
+
+export function providerFailureDetails(data: unknown) {
+  const error = (data as { error?: { type?: unknown; code?: unknown; message?: unknown } } | null)?.error;
+  const message = typeof error?.message === "string" ? error.message : "";
+  const category = /quota|credit|billing|spend limit/i.test(message)
+    ? "quota_or_billing"
+    : /rate.?limit|too many requests/i.test(message)
+      ? "rate_limited"
+      : /safety|content policy|moderation/i.test(message)
+        ? "safety_rejected"
+        : /invalid request|parameter|\binput\b|response.?format|structured output/i.test(message)
+          ? "request_format"
+          : "provider_rejection";
+  return {
+    ...(safeProviderField(error?.type) ? { type: safeProviderField(error?.type) } : {}),
+    ...(safeProviderField(error?.code) ? { code: safeProviderField(error?.code) } : {}),
+    category,
+  };
+}
