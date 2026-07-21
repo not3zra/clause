@@ -6,7 +6,12 @@ import { validateClassInput } from "../lib/classes";
 import { createInvitePath, RoomInput, validateRoomInput } from "../lib/rooms";
 import { scoreForProgress } from "../lib/mission";
 import { RoomStage, validateRoomStages } from "../lib/room-stages";
-import { AnalyticsAttempt, buildAnalytics, summarizeAttempts, toAnalyticsCsv } from "../lib/teacher-metrics";
+import {
+  AnalyticsAttempt,
+  buildAnalytics,
+  summarizeAttempts,
+  toAnalyticsCsv,
+} from "../lib/teacher-metrics";
 import { teacherSignUpMessage } from "../lib/teacher-auth";
 import { teacherSessionView } from "../lib/teacher-session-view";
 import { Turnstile } from "./turnstile";
@@ -22,10 +27,52 @@ type Room = {
   versionId?: string;
 };
 type Assignment = { id?: string; invite_token: string; marks_visible: boolean };
-type AnalyticsRoom = { id: string; title: string; class_id: string; stage_count: number };
-type AttemptRow = { id: string; current_stage: number; completed_at: string | null; hints_used: number; stage_results: Record<string, { attempts?: number; correct?: boolean; guided?: boolean; verdict?: string }>; student_assignment: { student: { full_name: string; roll_number: string } | null } | null };
-type DbItem = { mission_attempt_id: string; room_stage_id: string; item_snapshot: { rule?: string } | null; student_answer: unknown; verdict: string; recommendation: { feedback?: string; reason?: string } | null; credit_awarded: boolean; provisional_credit: boolean; hint_used: boolean; submitted_at: string };
-type DbAttempt = { id: string; current_stage: number; completed_at: string | null; hints_used: number; elapsed_seconds: number; score: number; provisional_score: number; student_assignment: { student: { full_name: string; roll_number: string } | null; assignment: { room: { id: string; class_id: string; stage_count: number } | null } | null } | null };
+type AnalyticsRoom = {
+  id: string;
+  title: string;
+  class_id: string;
+  stage_count: number;
+};
+type AttemptRow = {
+  id: string;
+  current_stage: number;
+  completed_at: string | null;
+  hints_used: number;
+  stage_results: Record<
+    string,
+    { attempts?: number; correct?: boolean; guided?: boolean; verdict?: string }
+  >;
+  student_assignment: {
+    student: { full_name: string; roll_number: string } | null;
+  } | null;
+};
+type DbItem = {
+  mission_attempt_id: string;
+  room_stage_id: string;
+  item_snapshot: { rule?: string } | null;
+  student_answer: unknown;
+  verdict: string;
+  recommendation: { feedback?: string; reason?: string } | null;
+  credit_awarded: boolean;
+  provisional_credit: boolean;
+  hint_used: boolean;
+  submitted_at: string;
+};
+type DbAttempt = {
+  id: string;
+  current_stage: number;
+  completed_at: string | null;
+  hints_used: number;
+  elapsed_seconds: number;
+  score: number;
+  provisional_score: number;
+  student_assignment: {
+    student: { full_name: string; roll_number: string } | null;
+    assignment: {
+      room: { id: string; class_id: string; stage_count: number } | null;
+    } | null;
+  } | null;
+};
 type Appeal = {
   id: string;
   mission_attempt_id: string;
@@ -86,7 +133,10 @@ export function TeacherPortal() {
         .order("created_at", { ascending: false });
       if (error) setMessage(error.message);
       else setClasses((data ?? []) as TeacherClass[]);
-      const { data: roomData, error: roomError } = await supabase.from("rooms").select("id, title, class_id, stage_count").order("created_at", { ascending: false });
+      const { data: roomData, error: roomError } = await supabase
+        .from("rooms")
+        .select("id, title, class_id, stage_count")
+        .order("created_at", { ascending: false });
       if (roomError) setMessage(roomError.message);
       else setAnalyticsRooms((roomData ?? []) as AnalyticsRoom[]);
       setTeacherId(id);
@@ -102,7 +152,12 @@ export function TeacherPortal() {
           "id, current_stage, completed_at, hints_used, elapsed_seconds, score, provisional_score, student_assignment:student_assignments!inner(student:student_profiles(full_name, roll_number), assignment:assignments!inner(room:rooms!inner(id, class_id, stage_count)))",
         )
         .order("updated_at", { ascending: false }),
-      supabase.from("mission_item_attempts").select("mission_attempt_id, room_stage_id, item_snapshot, student_answer, verdict, recommendation, credit_awarded, provisional_credit, hint_used, submitted_at").order("submitted_at", { ascending: true }),
+      supabase
+        .from("mission_item_attempts")
+        .select(
+          "mission_attempt_id, room_stage_id, item_snapshot, student_answer, verdict, recommendation, credit_awarded, provisional_credit, hint_used, submitted_at",
+        )
+        .order("submitted_at", { ascending: true }),
       supabase
         .from("appeals")
         .select(
@@ -114,31 +169,75 @@ export function TeacherPortal() {
     else if (itemResult.error) setMessage(itemResult.error.message);
     else {
       const itemsByAttempt = new Map<string, DbItem[]>();
-      for (const item of (itemResult.data ?? []) as unknown as DbItem[]) itemsByAttempt.set(item.mission_attempt_id, [...(itemsByAttempt.get(item.mission_attempt_id) ?? []), item]);
+      for (const item of (itemResult.data ?? []) as unknown as DbItem[])
+        itemsByAttempt.set(item.mission_attempt_id, [
+          ...(itemsByAttempt.get(item.mission_attempt_id) ?? []),
+          item,
+        ]);
       const appealsByAttempt = new Map<string, number>();
-      for (const appeal of appealResult.data ?? []) appealsByAttempt.set(appeal.mission_attempt_id, (appealsByAttempt.get(appeal.mission_attempt_id) ?? 0) + 1);
-      setAttempts(((attemptResult.data ?? []) as unknown as DbAttempt[]).map((attempt) => {
-        const assignment = attempt.student_assignment;
-        const room = assignment?.assignment?.room;
-        return {
-          id: attempt.id, classId: room?.class_id, roomId: room?.id, studentName: assignment?.student?.full_name ?? "Student", rollNumber: assignment?.student?.roll_number ?? "", currentStage: attempt.current_stage, stageCount: room?.stage_count ?? 0, completed: Boolean(attempt.completed_at), hintsUsed: attempt.hints_used, elapsedSeconds: attempt.elapsed_seconds, score: attempt.score, provisionalScore: attempt.provisional_score,
-          appeals: appealsByAttempt.get(attempt.id) ?? 0,
-          itemAttempts: (itemsByAttempt.get(attempt.id) ?? []).map((item) => ({ stageId: item.room_stage_id, rule: item.item_snapshot?.rule ?? "Unspecified rule", answer: typeof item.student_answer === "string" ? item.student_answer : JSON.stringify(item.student_answer), feedback: item.recommendation?.feedback ?? item.recommendation?.reason ?? "", verdict: item.verdict, creditAwarded: item.credit_awarded, provisionalCredit: item.provisional_credit, hintUsed: item.hint_used, submittedAt: item.submitted_at })),
-        };
-      }));
+      for (const appeal of appealResult.data ?? [])
+        appealsByAttempt.set(
+          appeal.mission_attempt_id,
+          (appealsByAttempt.get(appeal.mission_attempt_id) ?? 0) + 1,
+        );
+      setAttempts(
+        ((attemptResult.data ?? []) as unknown as DbAttempt[]).map(
+          (attempt) => {
+            const assignment = attempt.student_assignment;
+            const room = assignment?.assignment?.room;
+            return {
+              id: attempt.id,
+              classId: room?.class_id,
+              roomId: room?.id,
+              studentName: assignment?.student?.full_name ?? "Student",
+              rollNumber: assignment?.student?.roll_number ?? "",
+              currentStage: attempt.current_stage,
+              stageCount: room?.stage_count ?? 0,
+              completed: Boolean(attempt.completed_at),
+              hintsUsed: attempt.hints_used,
+              elapsedSeconds: attempt.elapsed_seconds,
+              score: attempt.score,
+              provisionalScore: attempt.provisional_score,
+              appeals: appealsByAttempt.get(attempt.id) ?? 0,
+              itemAttempts: (itemsByAttempt.get(attempt.id) ?? []).map(
+                (item) => ({
+                  stageId: item.room_stage_id,
+                  rule: item.item_snapshot?.rule ?? "Unspecified rule",
+                  answer:
+                    typeof item.student_answer === "string"
+                      ? item.student_answer
+                      : JSON.stringify(item.student_answer),
+                  feedback:
+                    item.recommendation?.feedback ??
+                    item.recommendation?.reason ??
+                    "",
+                  verdict: item.verdict,
+                  creditAwarded: item.credit_awarded,
+                  provisionalCredit: item.provisional_credit,
+                  hintUsed: item.hint_used,
+                  submittedAt: item.submitted_at,
+                }),
+              ),
+            };
+          },
+        ),
+      );
     }
     if (appealResult.error) setMessage(appealResult.error.message);
     else setAppeals((appealResult.data ?? []) as unknown as Appeal[]);
   }, [supabase]);
 
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setTeacherEmail(data.user.email ?? null);
-        void loadClasses(data.user.id);
-        void loadResults();
-      }
-    }).finally(() => setSessionResolved(true));
+    void supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (data.user) {
+          setTeacherEmail(data.user.email ?? null);
+          void loadClasses(data.user.id);
+          void loadResults();
+        }
+      })
+      .finally(() => setSessionResolved(true));
   }, [supabase, loadClasses, loadResults]);
 
   const submitAuth = async (event: FormEvent) => {
@@ -146,24 +245,57 @@ export function TeacherPortal() {
     setMessage("");
     setBusy(true);
     if (mode === "sign-up") {
-      if (!turnstileToken) { setBusy(false); setMessage("Complete the security verification first."); return; }
-      const response = await fetch("/api/teacher-signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, displayName, turnstileToken }) });
-      const payload = await response.json() as { error?: string; confirmationRequired?: boolean };
-      setBusy(false); if (!response.ok) { setMessage(payload.error ?? "Could not create this teacher account."); return; }
-      setMode("sign-in"); setMessage(teacherSignUpMessage(Boolean(payload.confirmationRequired))); return;
+      if (!turnstileToken) {
+        setBusy(false);
+        setMessage("Complete the security verification first.");
+        return;
+      }
+      const response = await fetch("/api/teacher-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, displayName, turnstileToken }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        confirmationRequired?: boolean;
+      };
+      setBusy(false);
+      if (!response.ok) {
+        setMessage(payload.error ?? "Could not create this teacher account.");
+        return;
+      }
+      setMode("sign-in");
+      setMessage(teacherSignUpMessage(Boolean(payload.confirmationRequired)));
+      return;
     }
     const result = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (result.error) setMessage(result.error.message);
-    else if (result.data.user) { setTeacherEmail(result.data.user.email ?? null); setSessionResolved(true); await loadClasses(result.data.user.id); }
+    else if (result.data.user) {
+      setTeacherEmail(result.data.user.email ?? null);
+      setSessionResolved(true);
+      await loadClasses(result.data.user.id);
+    }
   };
 
   const signOut = async () => {
     setBusy(true);
     const { error } = await supabase.auth.signOut();
     setBusy(false);
-    if (error) { setMessage(error.message); return; }
-    setTeacherId(null); setTeacherEmail(null); setClasses([]); setAnalyticsRooms([]); setAttempts([]); setAppeals([]); setRoom(null); setAssignment(null); setDraftStages([]); setMessage("Signed out.");
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setTeacherId(null);
+    setTeacherEmail(null);
+    setClasses([]);
+    setAnalyticsRooms([]);
+    setAttempts([]);
+    setAppeals([]);
+    setRoom(null);
+    setAssignment(null);
+    setDraftStages([]);
+    setMessage("Signed out.");
   };
 
   const createClass = async (event: FormEvent) => {
@@ -269,7 +401,10 @@ export function TeacherPortal() {
     const stages = generatedPayload.draft.stages;
     await supabase
       .from("rooms")
-      .update({ title: generatedPayload.draft.title, story: generatedPayload.draft.story })
+      .update({
+        title: generatedPayload.draft.title,
+        story: generatedPayload.draft.story,
+      })
       .eq("id", data.id);
     const { data: savedStages, error: stagesError } = await supabase
       .from("room_stages")
@@ -359,7 +494,12 @@ export function TeacherPortal() {
     if (!error) {
       const { data, error: roomError } = await supabase
         .from("rooms")
-        .update({ title: room.title, story: room.story ?? "", reviewed_at: null, validated_at: null })
+        .update({
+          title: room.title,
+          story: room.story ?? "",
+          reviewed_at: null,
+          validated_at: null,
+        })
         .eq("id", room.id)
         .select("id, title, status, reviewed_at, validated_at")
         .single();
@@ -419,7 +559,15 @@ export function TeacherPortal() {
         id: draftStages.find((item) => item.ordinal === stage.ordinal)?.id,
       })),
     );
-    setRoom((current) => current ? { ...current, title: payload.draft!.title, story: payload.draft!.story } : current);
+    setRoom((current) =>
+      current
+        ? {
+            ...current,
+            title: payload.draft!.title,
+            story: payload.draft!.story,
+          }
+        : current,
+    );
     setMessage(
       "Replacement draft ready. Save and revalidate it before teacher review.",
     );
@@ -493,7 +641,11 @@ export function TeacherPortal() {
         marks_visible: boolean;
       };
       setRoom(roomResult.data as Room);
-      const assignmentResult = await supabase.from("assignments").select("id").eq("room_id", room.id).single();
+      const assignmentResult = await supabase
+        .from("assignments")
+        .select("id")
+        .eq("room_id", room.id)
+        .single();
       setAssignment({
         id: assignmentResult.data?.id,
         invite_token: frozen.invite_token,
@@ -519,10 +671,15 @@ export function TeacherPortal() {
   const closeInvite = async () => {
     if (!assignment?.id) return;
     setBusy(true);
-    const { error } = await supabase.rpc("close_assignment_invite", { p_assignment_id: assignment.id });
+    const { error } = await supabase.rpc("close_assignment_invite", {
+      p_assignment_id: assignment.id,
+    });
     setBusy(false);
     if (error) setMessage(error.message);
-    else setMessage("Invite closed. New joins and active student sessions are revoked; recorded progress remains available.");
+    else
+      setMessage(
+        "Invite closed. New joins and active student sessions are revoked; recorded progress remains available.",
+      );
   };
 
   const resolveAppeal = async (
@@ -541,7 +698,9 @@ export function TeacherPortal() {
     else {
       setAppeals((items) =>
         items.map((item) =>
-          item.id === appeal.id ? { ...item, ...(data as unknown as Appeal) } : item,
+          item.id === appeal.id
+            ? { ...item, ...(data as unknown as Appeal) }
+            : item,
         ),
       );
       setMessage(`Appeal ${status}.`);
@@ -549,21 +708,32 @@ export function TeacherPortal() {
   };
 
   const sessionView = teacherSessionView(sessionResolved, teacherId);
-  if (sessionView === "loading") return <section className="mx-auto max-w-md px-5 py-12"><div className="panel" role="status"><p className="eyebrow">Teacher access</p><h1 className="mt-2 text-3xl font-black">Checking your session…</h1><p className="mt-3 text-[#59677a]">Preparing your teacher portal.</p></div></section>;
+  if (sessionView === "loading")
+    return (
+      <section className='teacher-console'>
+        <div className='teacher-signin-panel' role='status'>
+          <span className='teacher-section-label'>Teacher access</span>
+          <h1 className='teacher-signin-title' style={{ marginTop: 8 }}>
+            Checking your session…
+          </h1>
+          <p className='teacher-panel-desc'>Preparing your teacher portal.</p>
+        </div>
+      </section>
+    );
   if (sessionView === "signed_out")
     return (
-      <section className="mx-auto max-w-md px-5 py-12">
-        <div className="panel">
-          <p className="eyebrow">Teacher access</p>
-          <h1 className="mt-2 text-3xl font-black">
+      <section className='teacher-console'>
+        <div className='teacher-signin-panel'>
+          <span className='teacher-section-label'>Teacher access</span>
+          <h1 className='teacher-signin-title'>
             {mode === "sign-in" ? "Sign in" : "Create teacher account"}
           </h1>
-          <form className="mt-6 space-y-4" onSubmit={submitAuth}>
+          <form className='mt-6 space-y-4' onSubmit={submitAuth}>
             {mode === "sign-up" && (
-              <label className="block text-sm font-bold">
+              <label className='block text-sm font-bold'>
                 Name
                 <input
-                  className="input-shell mt-2"
+                  className='input-shell mt-2'
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   required
@@ -571,21 +741,21 @@ export function TeacherPortal() {
               </label>
             )}
             {mode === "sign-up" && <Turnstile onToken={setTurnstileToken} />}
-            <label className="block text-sm font-bold">
+            <label className='block text-sm font-bold'>
               Email
               <input
-                className="input-shell mt-2"
-                type="email"
+                className='input-shell mt-2'
+                type='email'
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </label>
-            <label className="block text-sm font-bold">
+            <label className='block text-sm font-bold'>
               Password
               <input
-                className="input-shell mt-2"
-                type="password"
+                className='input-shell mt-2'
+                type='password'
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -593,28 +763,28 @@ export function TeacherPortal() {
               />
             </label>
             <button
-              className="primary-action w-full"
+              className='primary-action w-full'
               disabled={busy}
-              type="submit"
+              type='submit'
             >
               {busy
-                ? "Workingâ€¦"
+                ? "Working…"
                 : mode === "sign-in"
                   ? "Sign in"
                   : "Create account"}
             </button>
           </form>
           <button
-            className="ghost-action mt-4"
+            className='teacher-signin-toggle'
             onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
-            type="button"
+            type='button'
           >
             {mode === "sign-in"
               ? "Need an account? Create one"
               : "Already have an account? Sign in"}
           </button>
           {message && (
-            <p className="mt-4 text-sm text-[#8b352a]" role="status">
+            <p className='teacher-message error' role='status'>
               {message}
             </p>
           )}
@@ -622,24 +792,69 @@ export function TeacherPortal() {
       </section>
     );
 
+  const workflowSteps = [
+    { key: "draft", label: "Draft" },
+    { key: "review", label: "Review" },
+    { key: "validate", label: "Validate" },
+    { key: "publish", label: "Publish" },
+  ];
+  const currentStep =
+    room?.status === "published"
+      ? 4
+      : room?.validated_at
+        ? 3
+        : room?.reviewed_at
+          ? 2
+          : room
+            ? 1
+            : 0;
+
   return (
-    <section className="mx-auto max-w-3xl px-5 py-12">
-      <div className="panel">
-        <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Signed in{teacherEmail ? ` as ${teacherEmail}` : ""}</p><button className="ghost-action" disabled={busy} onClick={signOut} type="button">Sign out</button></div>
-        <h1 className="mt-2 text-3xl font-black">
-          Create and publish a grammar room
-        </h1>
-        <form className="mt-6 flex flex-wrap gap-3" onSubmit={createClass}>
+    <section className='teacher-console'>
+      <div className='teacher-console-header'>
+        <div className='teacher-console-header-left'>
+          <span className='teacher-section-label'>
+            Signed in{teacherEmail ? ` as ${teacherEmail}` : ""}
+          </span>
+          <h1 className='teacher-console-title'>
+            Create and publish a grammar room
+          </h1>
+          <p className='teacher-console-subtitle'>
+            Generate, review, and share grammar escape rooms with your class.
+          </p>
+        </div>
+        <button
+          className='ghost-action'
+          disabled={busy}
+          onClick={signOut}
+          type='button'
+        >
+          Sign out
+        </button>
+      </div>
+
+      <div className='teacher-panel'>
+        <div className='teacher-panel-header'>
+          <div>
+            <span className='teacher-section-label'>Class setup</span>
+            <h2 className='teacher-panel-title'>Create a class</h2>
+            <p className='teacher-panel-desc'>
+              Add a class before generating a room.
+            </p>
+          </div>
+        </div>
+        <form className='teacher-inline-form' onSubmit={createClass}>
           <input
-            aria-label="Class name"
-            className="input-shell flex-1"
-            placeholder="e.g. 7B Grammar Lab"
+            aria-label='Class name'
+            className='input-shell'
+            placeholder='e.g. 7B Grammar Lab'
             value={className}
             onChange={(e) => setClassName(e.target.value)}
           />
           <select
-            aria-label="Grade"
-            className="input-shell w-32"
+            aria-label='Grade'
+            className='input-shell'
+            style={{ width: 130 }}
             value={grade}
             onChange={(e) => setGrade(Number(e.target.value))}
           >
@@ -649,46 +864,83 @@ export function TeacherPortal() {
               </option>
             ))}
           </select>
-          <button className="secondary-action" disabled={busy} type="submit">
+          <button className='secondary-action' disabled={busy} type='submit'>
             Create class
           </button>
         </form>
-        <ul className="mt-5 space-y-2">
-          {classes.map((item) => (
-            <li
-              className="rounded-md border border-[#e8e2d7] p-3"
-              key={item.id}
-            >
-              <strong>{item.name}</strong>
-              <span className="ml-2 text-sm text-[#657286]">
-                Grade {item.grade}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {classes.length > 0 && (
+          <div className='teacher-class-list'>
+            {classes.map((item) => (
+              <div className='teacher-class-item' key={item.id}>
+                <span className='teacher-class-name'>{item.name}</span>
+                <span className='teacher-class-grade'>Grade {item.grade}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="panel mt-6">
-        <p className="eyebrow">Room workflow</p>
-        <h2 className="mt-2 text-2xl font-black">
-          {room ? room.title : "New grammar room"}
-        </h2>
+      <div className='teacher-panel'>
+        <div className='teacher-panel-header'>
+          <div>
+            <span className='teacher-section-label'>Room workflow</span>
+            <h2 className='teacher-panel-title'>
+              {room ? room.title : "New grammar room"}
+            </h2>
+            <p className='teacher-panel-desc'>
+              {room
+                ? `Status: ${room.status}`
+                : "Configure and generate a grammar escape room."}
+            </p>
+          </div>
+          {room && (
+            <span className={`teacher-status-badge ${room.status}`}>
+              {room.status === "draft"
+                ? "Draft"
+                : room.status === "published"
+                  ? "Published"
+                  : room.status}
+            </span>
+          )}
+        </div>
+
+        {room && (
+          <div className='teacher-workflow'>
+            {workflowSteps.map((step, index) => (
+              <div className='teacher-workflow-step' key={step.key}>
+                <span
+                  className={`teacher-workflow-marker ${currentStep > index ? "done" : currentStep === index ? "active" : ""}`}
+                >
+                  {currentStep > index ? "OK" : index + 1}
+                </span>
+                <span
+                  className={`teacher-workflow-label ${currentStep > index ? "done" : currentStep === index ? "active" : ""}`}
+                >
+                  {step.label}
+                </span>
+                {index < workflowSteps.length - 1 && (
+                  <div
+                    className={`teacher-workflow-connector ${currentStep > index ? "done" : currentStep === index ? "active" : ""}`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {!room ? (
-          <form
-            className="mt-6 grid gap-4 sm:grid-cols-2"
-            onSubmit={createDraft}
-          >
-            <label className="text-sm font-bold">
+          <form className='mt-4 teacher-grid-2' onSubmit={createDraft}>
+            <label className='text-sm font-bold'>
               Class
               <select
-                aria-label="Room class"
-                className="input-shell mt-2"
+                aria-label='Room class'
+                className='input-shell mt-2'
                 value={roomInput.classId}
                 onChange={(e) =>
                   setRoomInput({ ...roomInput, classId: e.target.value })
                 }
               >
-                <option value="">Choose a class</option>
+                <option value=''>Choose a class</option>
                 {classes.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name} (Grade {item.grade})
@@ -696,11 +948,11 @@ export function TeacherPortal() {
                 ))}
               </select>
             </label>
-            <label className="text-sm font-bold">
+            <label className='text-sm font-bold'>
               Theme
               <select
-                aria-label="Theme"
-                className="input-shell mt-2"
+                aria-label='Theme'
+                className='input-shell mt-2'
                 value={roomInput.theme}
                 onChange={(e) =>
                   setRoomInput({ ...roomInput, theme: e.target.value })
@@ -713,33 +965,33 @@ export function TeacherPortal() {
                 )}
               </select>
             </label>
-            <label className="text-sm font-bold">
+            <label className='text-sm font-bold'>
               Topic
               <input
-                aria-label="Grammar topic"
-                className="input-shell mt-2"
+                aria-label='Grammar topic'
+                className='input-shell mt-2'
                 value={roomInput.topic}
                 onChange={(e) =>
                   setRoomInput({ ...roomInput, topic: e.target.value })
                 }
               />
             </label>
-            <label className="text-sm font-bold">
+            <label className='text-sm font-bold'>
               Subtopic
               <input
-                aria-label="Grammar subtopic"
-                className="input-shell mt-2"
+                aria-label='Grammar subtopic'
+                className='input-shell mt-2'
                 value={roomInput.subtopic}
                 onChange={(e) =>
                   setRoomInput({ ...roomInput, subtopic: e.target.value })
                 }
               />
             </label>
-            <label className="text-sm font-bold">
+            <label className='text-sm font-bold'>
               Stages
               <select
-                aria-label="Stages"
-                className="input-shell mt-2"
+                aria-label='Stages'
+                className='input-shell mt-2'
                 value={roomInput.stageCount}
                 onChange={(e) =>
                   setRoomInput({
@@ -752,38 +1004,50 @@ export function TeacherPortal() {
                 <option value={4}>4 stages</option>
               </select>
             </label>
-            <label className="flex items-center gap-3 text-sm font-bold">
+            <label
+              className='flex items-center gap-3 text-sm font-bold'
+              style={{ alignSelf: "flex-end", paddingBottom: 2 }}
+            >
               <input
                 checked={roomInput.marksVisible}
                 onChange={(e) =>
                   setRoomInput({ ...roomInput, marksVisible: e.target.checked })
                 }
-                type="checkbox"
+                type='checkbox'
               />
               Show marks to students
             </label>
             <button
-              className="primary-action w-fit"
+              className='primary-action w-fit'
               disabled={busy || !classes.length}
-              type="submit"
+              type='submit'
+              style={{ gridColumn: "1 / -1" }}
             >
               Generate AI draft
             </button>
           </form>
         ) : (
-          <div className="mt-6 space-y-4">
+          <div className='mt-4 space-y-4'>
             {room.status === "draft" && (
-              <div className="space-y-3 rounded-md border border-[#e8e2d7] p-4">
-                <strong>Teacher draft editor</strong>
+              <div>
+                <h3
+                  className='teacher-section-title'
+                  style={{ marginBottom: 12 }}
+                >
+                  Draft editor
+                </h3>
                 {draftStages.map((stage, index) => (
                   <div
-                    className="grid gap-2 border-t pt-3"
+                    className='teacher-stage-editor'
                     key={stage.id ?? stage.ordinal}
                   >
-                    <label className="text-sm font-bold">
-                      Stage {stage.ordinal} title
+                    <label className='text-sm font-bold'>
+                      <span className='teacher-stage-number'>
+                        {stage.ordinal}
+                      </span>
+                      Stage title
                       <input
-                        className="input-shell mt-1"
+                        className='input-shell mt-1'
                         value={stage.title}
                         onChange={(e) =>
                           setDraftStages((items) =>
@@ -796,10 +1060,13 @@ export function TeacherPortal() {
                         }
                       />
                     </label>
-                    <label className="text-sm font-bold">
+                    <label
+                      className='text-sm font-bold'
+                      style={{ marginTop: 12, display: "block" }}
+                    >
                       Prompt
                       <textarea
-                        className="input-shell mt-1 min-h-20"
+                        className='input-shell mt-1 min-h-20'
                         value={stage.prompt}
                         onChange={(e) =>
                           setDraftStages((items) =>
@@ -812,10 +1079,13 @@ export function TeacherPortal() {
                         }
                       />
                     </label>
-                    <label className="text-sm font-bold">
+                    <label
+                      className='text-sm font-bold'
+                      style={{ marginTop: 12, display: "block" }}
+                    >
                       Token
                       <input
-                        className="input-shell mt-1"
+                        className='input-shell mt-1'
                         value={stage.token}
                         onChange={(e) =>
                           setDraftStages((items) =>
@@ -830,82 +1100,106 @@ export function TeacherPortal() {
                     </label>
                   </div>
                 ))}
-                <label className="block text-sm font-bold">
+                <label
+                  className='block text-sm font-bold'
+                  style={{ marginTop: 16 }}
+                >
                   Regenerate instructions
                   <textarea
-                    className="input-shell mt-1 min-h-20"
+                    className='input-shell mt-1 min-h-20'
                     maxLength={500}
-                    onChange={(event) => setRegenerationInstructions(event.target.value)}
-                    placeholder="For example: use a cricket-club setting and simpler vocabulary."
+                    onChange={(event) =>
+                      setRegenerationInstructions(event.target.value)
+                    }
+                    placeholder='For example: use a cricket-club setting and simpler vocabulary.'
                     value={regenerationInstructions}
                   />
                 </label>
-                <p className="text-xs text-[#667085]">
-                  The replacement remains a draft until you save, revalidate, and review it.
+                <p className='text-xs text-[#667085]' style={{ marginTop: 4 }}>
+                  The replacement remains a draft until you save, revalidate,
+                  and review it.
                 </p>
-                <div className="flex flex-wrap gap-2">
-                <button
-                  className="secondary-action"
-                  disabled={busy}
-                  onClick={saveDraftEdits}
-                  type="button"
-                >
-                  Save and revalidate edits
-                </button>
-                  <button className="ghost-action" disabled={busy} onClick={regenerateDraft} type="button">
+                <div className='teacher-action-bar'>
+                  <button
+                    className='secondary-action'
+                    disabled={busy}
+                    onClick={saveDraftEdits}
+                    type='button'
+                  >
+                    Save and revalidate edits
+                  </button>
+                  <button
+                    className='ghost-action'
+                    disabled={busy}
+                    onClick={regenerateDraft}
+                    type='button'
+                  >
                     Regenerate draft
                   </button>
                 </div>
               </div>
             )}
-            <div className="rounded-md border border-[#e8e2d7] p-4 text-sm">
-              <strong>Review checklist</strong>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-[#667085]">
+            <div className='teacher-review-box'>
+              <h3 className='teacher-section-title'>Review checklist</h3>
+              <ul className='teacher-review-list'>
                 <li>Grammar rule and answer key are correct.</li>
                 <li>Content is suitable for the selected grade.</li>
                 <li>Story and clue tokens are consistent and kid-safe.</li>
               </ul>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className='teacher-action-bar'>
               <button
-                className="secondary-action"
+                className='secondary-action'
                 disabled={busy || Boolean(room.reviewed_at)}
                 onClick={reviewRoom}
-                type="button"
+                type='button'
               >
                 {room.reviewed_at
                   ? "Review recorded"
                   : "Confirm teacher review"}
               </button>
               <button
-                className="secondary-action"
+                className='secondary-action'
                 disabled={
                   busy || !room.reviewed_at || Boolean(room.validated_at)
                 }
                 onClick={validateRoom}
-                type="button"
+                type='button'
               >
                 {room.validated_at ? "Validation passed" : "Validate room"}
               </button>
               <button
-                className="primary-action"
+                className='primary-action'
                 disabled={
                   busy || room.status === "published" || !room.validated_at
                 }
                 onClick={publishRoom}
-                type="button"
+                type='button'
               >
                 {room.status === "published" ? "Published" : "Publish room"}
               </button>
               {assignment && (
                 <>
-                  <button className="primary-action" onClick={copyInvite} type="button">Copy home invite link</button>
-                  <button className="ghost-action" disabled={busy || !assignment.id} onClick={closeInvite} type="button">Close invite</button>
+                  <button
+                    className='primary-action'
+                    onClick={copyInvite}
+                    type='button'
+                  >
+                    Copy home invite link
+                  </button>
+                  <button
+                    className='ghost-action'
+                    disabled={busy || !assignment.id}
+                    onClick={closeInvite}
+                    type='button'
+                  >
+                    Close invite
+                  </button>
                 </>
               )}
             </div>
             {assignment && (
-              <p className="text-sm text-[#667085]">
+              <p className='text-sm text-[#667085]' style={{ marginTop: 12 }}>
                 Student marks are{" "}
                 {assignment.marks_visible ? "visible" : "hidden"} for this
                 assignment.
@@ -914,9 +1208,13 @@ export function TeacherPortal() {
           </div>
         )}
         {message && (
-          <p className="mt-5 text-sm text-[#0f766e]" role="status">
+          <div
+            className='teacher-message info'
+            style={{ marginTop: 20 }}
+            role='status'
+          >
             {message}
-          </p>
+          </div>
         )}
       </div>
       <AnalyticsResults
@@ -959,56 +1257,56 @@ export function TeacherResults({
     })),
   );
   return (
-    <div className="panel mt-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className='panel mt-6'>
+      <div className='flex flex-wrap items-start justify-between gap-3'>
         <div>
-          <p className="eyebrow">Class overview</p>
-          <h2 className="mt-2 text-2xl font-black">Student results</h2>
-          <p className="mt-1 text-sm text-[#667085]">
+          <p className='eyebrow'>Class overview</p>
+          <h2 className='mt-2 text-2xl font-black'>Student results</h2>
+          <p className='mt-1 text-sm text-[#667085]'>
             Completion {summary.completion}% · First attempt{" "}
             {summary.firstAttemptAccuracy}% · Hints {summary.hintsUsed} ·{" "}
             {summary.mastery}
           </p>
         </div>
         <button
-          className="secondary-action"
+          className='secondary-action'
           disabled={busy}
           onClick={() => void onRefresh()}
-          type="button"
+          type='button'
         >
           Refresh results
         </button>
       </div>
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[620px] text-left text-sm">
-          <thead className="border-b border-[#e8e2d7] text-xs uppercase text-[#657286]">
+      <div className='mt-5 overflow-x-auto'>
+        <table className='w-full min-w-[620px] text-left text-sm'>
+          <thead className='border-b border-[#e8e2d7] text-xs uppercase text-[#657286]'>
             <tr>
-              <th className="pb-3">Student</th>
-              <th className="pb-3">Progress</th>
-              <th className="pb-3">Score</th>
-              <th className="pb-3">Hints</th>
-              <th className="pb-3">Status</th>
+              <th className='pb-3'>Student</th>
+              <th className='pb-3'>Progress</th>
+              <th className='pb-3'>Score</th>
+              <th className='pb-3'>Hints</th>
+              <th className='pb-3'>Status</th>
             </tr>
           </thead>
           <tbody>
             {attempts.map((item) => (
-              <tr className="border-b border-[#f7f3eb]" key={item.id}>
-                <td className="py-3 font-bold">
+              <tr className='border-b border-[#f7f3eb]' key={item.id}>
+                <td className='py-3 font-bold'>
                   {item.student_assignment?.student?.full_name ?? "Student"}
-                  <span className="ml-2 text-xs font-normal text-[#657286]">
+                  <span className='ml-2 text-xs font-normal text-[#657286]'>
                     {item.student_assignment?.student?.roll_number}
                   </span>
                 </td>
-                <td className="py-3">{item.current_stage}/3 stages</td>
-                <td className="py-3 font-bold">
+                <td className='py-3'>{item.current_stage}/3 stages</td>
+                <td className='py-3 font-bold'>
                   {scoreForProgress(
                     item.current_stage,
                     Boolean(item.completed_at),
                   )}
                   %
                 </td>
-                <td className="py-3">{item.hints_used}</td>
-                <td className="py-3">
+                <td className='py-3'>{item.hints_used}</td>
+                <td className='py-3'>
                   {item.completed_at ? "Complete" : "In progress"}
                 </td>
               </tr>
@@ -1016,35 +1314,35 @@ export function TeacherResults({
           </tbody>
         </table>
       </div>
-      <div className="mt-7 border-t border-[#e8e2d7] pt-5">
-        <p className="eyebrow">Appeals</p>
-        <h3 className="mt-2 text-lg font-black">
+      <div className='mt-7 border-t border-[#e8e2d7] pt-5'>
+        <p className='eyebrow'>Appeals</p>
+        <h3 className='mt-2 text-lg font-black'>
           {appeals.filter((item) => item.status === "pending").length} pending
           review
         </h3>
-        <div className="mt-4 space-y-3">
+        <div className='mt-4 space-y-3'>
           {appeals.map((appeal) => (
             <div
-              className="rounded-md border border-[#e8e2d7] p-4"
+              className='rounded-md border border-[#e8e2d7] p-4'
               key={appeal.id}
             >
-              <p className="font-bold">
+              <p className='font-bold'>
                 {appeal.mission_attempt?.student_assignment?.student
                   ?.full_name ?? "Student"}{" "}
                 | {appeal.stage_id}
               </p>
-              <p className="mt-2 text-sm text-[#667085]">
+              <p className='mt-2 text-sm text-[#667085]'>
                 {appeal.student_explanation || "No explanation provided."}
               </p>
-              <p className="mt-2 text-xs font-bold uppercase text-[#657286]">
+              <p className='mt-2 text-xs font-bold uppercase text-[#657286]'>
                 {appeal.status}
               </p>
               {appeal.status === "pending" && (
                 <>
-                  <label className="mt-3 block text-sm font-bold">
+                  <label className='mt-3 block text-sm font-bold'>
                     Teacher comment
                     <textarea
-                      className="input-shell mt-2 min-h-20"
+                      className='input-shell mt-2 min-h-20'
                       onChange={(event) =>
                         setComments({
                           ...comments,
@@ -1054,9 +1352,9 @@ export function TeacherResults({
                       value={comments[appeal.id] ?? ""}
                     />
                   </label>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className='mt-3 flex flex-wrap gap-2'>
                     <button
-                      className="secondary-action"
+                      className='secondary-action'
                       disabled={busy}
                       onClick={() =>
                         void onResolve(
@@ -1065,12 +1363,12 @@ export function TeacherResults({
                           comments[appeal.id] ?? "",
                         )
                       }
-                      type="button"
+                      type='button'
                     >
                       Accept
                     </button>
                     <button
-                      className="secondary-action"
+                      className='secondary-action'
                       disabled={busy}
                       onClick={() =>
                         void onResolve(
@@ -1079,12 +1377,12 @@ export function TeacherResults({
                           comments[appeal.id] ?? "",
                         )
                       }
-                      type="button"
+                      type='button'
                     >
                       Deny
                     </button>
                     <button
-                      className="secondary-action"
+                      className='secondary-action'
                       disabled={busy}
                       onClick={() =>
                         void onResolve(
@@ -1093,7 +1391,7 @@ export function TeacherResults({
                           comments[appeal.id] ?? "",
                         )
                       }
-                      type="button"
+                      type='button'
                     >
                       Override
                     </button>
@@ -1108,19 +1406,305 @@ export function TeacherResults({
   );
 }
 
-function AnalyticsResults({ appeals, attempts, classes, rooms, busy, onRefresh, onResolve }: { appeals: Appeal[]; attempts: AnalyticsAttempt[]; classes: TeacherClass[]; rooms: AnalyticsRoom[]; busy: boolean; onRefresh: () => Promise<void>; onResolve: (appeal: Appeal, status: "accepted" | "denied" | "overridden", teacherComment: string) => Promise<void> }) {
+function AnalyticsResults({
+  appeals,
+  attempts,
+  classes,
+  rooms,
+  busy,
+  onRefresh,
+  onResolve,
+}: {
+  appeals: Appeal[];
+  attempts: AnalyticsAttempt[];
+  classes: TeacherClass[];
+  rooms: AnalyticsRoom[];
+  busy: boolean;
+  onRefresh: () => Promise<void>;
+  onResolve: (
+    appeal: Appeal,
+    status: "accepted" | "denied" | "overridden",
+    teacherComment: string,
+  ) => Promise<void>;
+}) {
   const [classId, setClassId] = useState("");
   const [roomId, setRoomId] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, string>>({});
-  const analytics = buildAnalytics(attempts, { classId: classId || undefined, roomId: roomId || undefined });
-  const visibleAppeals = appeals.filter((appeal) => analytics.students.some((student) => student.id === appeal.mission_attempt_id));
+  const analytics = buildAnalytics(attempts, {
+    classId: classId || undefined,
+    roomId: roomId || undefined,
+  });
+  const visibleAppeals = appeals.filter((appeal) =>
+    analytics.students.some(
+      (student) => student.id === appeal.mission_attempt_id,
+    ),
+  );
   const exportCsv = () => {
-    const href = URL.createObjectURL(new Blob([toAnalyticsCsv(analytics)], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a"); anchor.href = href; anchor.download = "clause-results.csv"; anchor.click(); URL.revokeObjectURL(href);
+    const href = URL.createObjectURL(
+      new Blob([toAnalyticsCsv(analytics)], { type: "text/csv;charset=utf-8" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = "clause-results.csv";
+    anchor.click();
+    URL.revokeObjectURL(href);
   };
-  return <div className="panel mt-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="eyebrow">Teacher-only analytics</p><h2 className="mt-2 text-2xl font-black">Class results</h2><p className="mt-1 text-sm text-[#667085]">Completion {analytics.summary.completion}% · First attempt {analytics.summary.firstAttemptAccuracy}% · Hints {analytics.summary.hintsUsed} · Active {analytics.summary.activeAttempts} · Elapsed {Math.round(analytics.summary.elapsedSeconds / 60)} min · Appeals {analytics.summary.appeals}</p></div><div className="flex gap-2"><button className="secondary-action" disabled={busy} onClick={() => void onRefresh()} type="button">Refresh</button><button className="primary-action" disabled={!analytics.students.length} onClick={exportCsv} type="button">Export CSV</button></div></div>
-    <div className="mt-5 grid gap-3 sm:grid-cols-2"><select aria-label="Analytics class" className="input-shell" value={classId} onChange={(event) => { setClassId(event.target.value); setRoomId(""); }}><option value="">All of my classes</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select aria-label="Analytics room" className="input-shell" value={roomId} onChange={(event) => setRoomId(event.target.value)}><option value="">All rooms</option>{rooms.filter((item) => !classId || item.class_id === classId).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
-    {!analytics.students.length ? <p className="mt-6 rounded-md border border-dashed border-[#e8e2d7] p-5 text-sm text-[#657286]">No student attempts match this class and room yet.</p> : <><div className="mt-5 grid gap-3 sm:grid-cols-3">{analytics.rules.map((rule) => <div className="rounded-md border border-[#e8e2d7] p-3" key={rule.rule}><strong>{rule.rule}</strong><p className="mt-1 text-sm text-[#657286]">{rule.firstAttemptAccuracy}% first attempt · {rule.mastery}</p></div>)}</div><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e8e2d7] text-xs uppercase text-[#657286]"><tr><th className="pb-3">Student</th><th className="pb-3">Progress</th><th className="pb-3">Mastery</th><th className="pb-3">Hints</th><th className="pb-3">Status</th></tr></thead><tbody>{analytics.students.map((student) => <><tr className="border-b border-[#f7f3eb]" key={student.id}><td className="py-3 font-bold">{student.name}<span className="ml-2 text-xs font-normal text-[#657286]">{student.rollNumber}</span></td><td>{student.currentStage}/{student.stageCount} · {student.score}%</td><td>{student.mastery}</td><td>{student.hintsUsed}</td><td>{student.completed ? "Complete" : "In progress"}<button className="ml-2 text-xs font-bold text-[#0f766e] underline" onClick={() => setExpanded(expanded === student.id ? null : student.id)} type="button">Details</button></td></tr>{expanded === student.id && <tr key={`${student.id}-detail`}><td className="bg-[#f8fafc] px-3 py-4 text-sm" colSpan={5}><p><strong>Elapsed:</strong> {student.elapsedSeconds}s · <strong>Provisional score:</strong> {student.provisionalScore}%</p>{student.itemAttempts.map((item) => <div className="mt-3 rounded border border-[#e8e2d7] p-3" key={`${item.stageId}-${item.submittedAt}`}><strong>{item.rule}</strong> · {item.verdict}{item.provisionalCredit ? " · provisional" : ""}<p>Original answer: {item.answer}</p><p>Feedback: {item.feedback || "None recorded"}</p><p className="text-xs text-[#657286]">Audit event: {item.submittedAt}</p></div>)}</td></tr>}</>)}</tbody></table></div></>}
-    <div className="mt-7 border-t border-[#e8e2d7] pt-5"><p className="eyebrow">Appeals</p><h3 className="mt-2 text-lg font-black">{visibleAppeals.filter((item) => item.status === "pending").length} pending review</h3>{visibleAppeals.map((appeal) => <div className="mt-3 rounded-md border border-[#e8e2d7] p-4" key={appeal.id}><strong>{appeal.mission_attempt?.student_assignment?.student?.full_name ?? "Student"} · {appeal.stage_id}</strong><p className="mt-2 text-sm">{appeal.student_explanation || "No explanation provided."}</p><p className="mt-1 text-xs uppercase">{appeal.status}</p>{appeal.status === "pending" && <><textarea aria-label={`Comment for appeal ${appeal.id}`} className="input-shell mt-3 min-h-20" onChange={(event) => setComments({ ...comments, [appeal.id]: event.target.value })} value={comments[appeal.id] ?? ""} /><div className="mt-3 flex gap-2"><button className="secondary-action" disabled={busy} onClick={() => void onResolve(appeal, "accepted", comments[appeal.id] ?? "")} type="button">Accept</button><button className="secondary-action" disabled={busy} onClick={() => void onResolve(appeal, "denied", comments[appeal.id] ?? "")} type="button">Deny</button><button className="secondary-action" disabled={busy} onClick={() => void onResolve(appeal, "overridden", comments[appeal.id] ?? "")} type="button">Override</button></div></>}</div>)}</div></div>;
+  const masteryClass = (m: string) =>
+    m === "Secure" ? "high" : m === "Developing" ? "mid" : "low";
+  return (
+    <div className='teacher-panel'>
+      <div className='teacher-panel-header'>
+        <div>
+          <span className='teacher-section-label'>Teacher-only analytics</span>
+          <h2 className='teacher-panel-title'>Class results</h2>
+          <p className='teacher-panel-desc'>
+            Completion {analytics.summary.completion}% &middot; First attempt{" "}
+            {analytics.summary.firstAttemptAccuracy}% &middot; Hints{" "}
+            {analytics.summary.hintsUsed} &middot; Active{" "}
+            {analytics.summary.activeAttempts} &middot; Elapsed{" "}
+            {Math.round(analytics.summary.elapsedSeconds / 60)} min &middot;
+            Appeals {analytics.summary.appeals}
+          </p>
+        </div>
+        <div className='flex gap-2'>
+          <button
+            className='secondary-action'
+            disabled={busy}
+            onClick={() => void onRefresh()}
+            type='button'
+          >
+            Refresh
+          </button>
+          <button
+            className='primary-action'
+            disabled={!analytics.students.length}
+            onClick={exportCsv}
+            type='button'
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
+      <div className='teacher-filter-bar'>
+        <select
+          aria-label='Analytics class'
+          className='input-shell'
+          value={classId}
+          onChange={(event) => {
+            setClassId(event.target.value);
+            setRoomId("");
+          }}
+        >
+          <option value=''>All of my classes</option>
+          {classes.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label='Analytics room'
+          className='input-shell'
+          value={roomId}
+          onChange={(event) => setRoomId(event.target.value)}
+        >
+          <option value=''>All rooms</option>
+          {rooms
+            .filter((item) => !classId || item.class_id === classId)
+            .map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+        </select>
+      </div>
+      {!analytics.students.length ? (
+        <div className='teacher-empty' style={{ marginTop: 20 }}>
+          <div className='teacher-empty-icon'>&mdash;</div>
+          <span className='teacher-empty-text'>
+            No student attempts match this class and room yet.
+          </span>
+          <span className='teacher-empty-sub'>
+            Publish a room and share the invite link to see results here.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className='teacher-rules-grid'>
+            {analytics.rules.map((rule) => (
+              <div className='teacher-rule-card' key={rule.rule}>
+                <span className='teacher-rule-name'>{rule.rule}</span>
+                <span className='teacher-rule-stats'>
+                  {rule.firstAttemptAccuracy}% first attempt &middot;{" "}
+                  {rule.mastery}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className='overflow-x-auto'>
+            <table className='teacher-table' style={{ minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Progress</th>
+                  <th>Mastery</th>
+                  <th>Hints</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.students.map((student) => (
+                  <tr key={student.id}>
+                    <td>
+                      <span className='teacher-table-name'>
+                        {student.name}
+                        <span className='teacher-table-meta'>
+                          {student.rollNumber}
+                        </span>
+                      </span>
+                    </td>
+                    <td className='teacher-table-progress'>
+                      {student.currentStage}/{student.stageCount} &middot;{" "}
+                      {student.score}%
+                    </td>
+                    <td>
+                      <span
+                        className={`teacher-table-score ${masteryClass(student.mastery)}`}
+                      >
+                        {student.mastery}
+                      </span>
+                    </td>
+                    <td className='teacher-table-progress'>
+                      {student.hintsUsed}
+                    </td>
+                    <td>
+                      {student.completed ? "Complete" : "In progress"}
+                      <button
+                        className='ml-2 text-xs font-bold text-[#0f766e] underline'
+                        onClick={() =>
+                          setExpanded(
+                            expanded === student.id ? null : student.id,
+                          )
+                        }
+                        type='button'
+                      >
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      <div className='teacher-divider' />
+      <div>
+        <span className='teacher-section-label'>Appeals</span>
+        <h3 className='teacher-section-title' style={{ marginTop: 8 }}>
+          {visibleAppeals.filter((item) => item.status === "pending").length}{" "}
+          pending review
+        </h3>
+        {visibleAppeals.length === 0 ? (
+          <div className='teacher-empty' style={{ marginTop: 16 }}>
+            <div className='teacher-empty-icon'>OK</div>
+            <span className='teacher-empty-text'>No appeals to review</span>
+            <span className='teacher-empty-sub'>
+              Student challenges will appear here.
+            </span>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            {visibleAppeals.map((appeal) => (
+              <div className='teacher-appeal-card' key={appeal.id}>
+                <div className='teacher-appeal-header'>
+                  <span className='teacher-appeal-name'>
+                    {appeal.mission_attempt?.student_assignment?.student
+                      ?.full_name ?? "Student"}
+                  </span>
+                  <span className='teacher-appeal-stage'>
+                    {appeal.stage_id}
+                  </span>
+                </div>
+                <p className='teacher-appeal-text'>
+                  {appeal.student_explanation || "No explanation provided."}
+                </p>
+                <span className={`teacher-appeal-status ${appeal.status}`}>
+                  {appeal.status}
+                </span>
+                {appeal.status === "pending" && (
+                  <>
+                    <textarea
+                      aria-label={`Comment for appeal ${appeal.id}`}
+                      className='input-shell'
+                      style={{ marginTop: 12, minHeight: 80 }}
+                      onChange={(event) =>
+                        setComments({
+                          ...comments,
+                          [appeal.id]: event.target.value,
+                        })
+                      }
+                      value={comments[appeal.id] ?? ""}
+                    />
+                    <div className='teacher-appeal-actions'>
+                      <button
+                        className='secondary-action'
+                        disabled={busy}
+                        onClick={() =>
+                          void onResolve(
+                            appeal,
+                            "accepted",
+                            comments[appeal.id] ?? "",
+                          )
+                        }
+                        type='button'
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className='secondary-action'
+                        disabled={busy}
+                        onClick={() =>
+                          void onResolve(
+                            appeal,
+                            "denied",
+                            comments[appeal.id] ?? "",
+                          )
+                        }
+                        type='button'
+                      >
+                        Deny
+                      </button>
+                      <button
+                        className='secondary-action'
+                        disabled={busy}
+                        onClick={() =>
+                          void onResolve(
+                            appeal,
+                            "overridden",
+                            comments[appeal.id] ?? "",
+                          )
+                        }
+                        type='button'
+                      >
+                        Override
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
