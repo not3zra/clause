@@ -8,7 +8,7 @@ import { scoreForProgress } from "../lib/mission";
 import { RoomStage, validateRoomStages } from "../lib/room-stages";
 import { AnalyticsAttempt, buildAnalytics, summarizeAttempts, toAnalyticsCsv } from "../lib/teacher-metrics";
 import { teacherSignUpMessage } from "../lib/teacher-auth";
-import { teacherSessionView } from "../lib/teacher-session-view";
+import { teacherSessionAction, teacherSessionView } from "../lib/teacher-session-view";
 import { Turnstile } from "./turnstile";
 
 type TeacherClass = { id: string; name: string; grade: number };
@@ -139,14 +139,21 @@ export function TeacherPortal() {
         setTeacherEmail(session.user.email ?? null);
         void loadClasses(session.user.id);
         void loadResults();
-      } else {
-        setTeacherId(null);
-        setTeacherEmail(null);
       }
       setSessionResolved(true);
     };
-    void supabase.auth.getSession().then(({ data }) => restore(data.session)).catch(() => restore(null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => restore(session));
+    const clear = () => {
+      if (!active) return;
+      setTeacherId(null);
+      setTeacherEmail(null);
+      setSessionResolved(true);
+    };
+    void supabase.auth.getSession().then(({ data }) => data.session ? restore(data.session) : clear()).catch(clear);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const action = teacherSessionAction(event, Boolean(session?.user));
+      if (action === "restore" && session) restore(session);
+      if (action === "clear") clear();
+    });
     return () => { active = false; subscription.unsubscribe(); };
   }, [supabase, loadClasses, loadResults]);
 

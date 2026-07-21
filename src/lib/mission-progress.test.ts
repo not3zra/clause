@@ -11,4 +11,5 @@ describe("published mission completion", () => {
     expect(orderedTokensMatch(["SPARK", "ORBIT"], ["SPARK", "ORBIT"])).toBe(true);
     expect(orderedTokensMatch(["ORBIT", "SPARK"], ["SPARK", "ORBIT"])).toBe(false);
   });
+
 });
