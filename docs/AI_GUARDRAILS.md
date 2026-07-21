@@ -1,13 +1,13 @@
 # AI guardrails
 
-Clause uses Gemini only from server-side routes. The browser never receives `GEMINI_API_KEY`.
+Clause uses Groq only from server-side routes. The browser never receives `GROQ_API_KEY`.
 
 ## Approved demo configuration
 
-- Provider: Google Gemini
-- Model: `gemini-2.5-flash-lite`
+- Provider: Groq
+- Model: `openai/gpt-oss-20b`
 - App limits: 10 AI requests per student per hour and 30 requests per minute globally
-- Platform budget: stay within the Gemini free-tier limits; review the current account limits before a demo
+- Platform budget: stay within the Groq free-tier limits; review the current account limits before a demo
 - Fallback: deterministic mission feedback remains available when AI is unavailable or rate-limited
 
 ## Student-data boundary
