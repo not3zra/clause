@@ -49,4 +49,10 @@ next-env.d.ts
 
 # local development logs
 *.log
-/.github/
+
+# Local project, agent, and design artifacts.
+/.agents/
+/.impeccable/
+/DESIGN.md
+/PRODUCT.md
+/playwright-report/
