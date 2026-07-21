@@ -20,20 +20,28 @@ export function StudentInvite({ inviteToken }: { inviteToken: string }) {
   const [credentials, setCredentials] = useState<{ username: string; password: string } | null>(null);
   const [message, setMessage] = useState("Loading invite...");
 
-  const supabase = createBrowserClient(
+  const supabase = useMemo(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
+  ), []);
 
   const loadAttempt = useCallback(async (assignmentId: string) => {
-    const response = await fetch(`/api/attempts/${assignmentId}`);
-    if (response.ok) {
-      const data = await response.json();
-      setAttempt(data as Attempt);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setMessage("Sign in to continue your mission.");
+      return false;
     }
-  }, []);
+    const response = await fetch(`/api/attempts/${assignmentId}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const data = await response.json() as Attempt | { error?: string };
+    if (!response.ok) {
+      setMessage("error" in data ? data.error ?? "Could not load your mission." : "Could not load your mission.");
+      return false;
+    }
+    setAttempt(data as Attempt);
+    return true;
+  }, [supabase]);
 
-  useEffect(() => { void (async () => { const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`); const payload = await response.json(); if (!response.ok) { setMessage(payload.error); return; } setInvite(payload); setAttempt((payload.attempt as Attempt | null) ?? null); setMessage(""); const { data: { user } } = await supabase.auth.getUser(); if (user) await loadAttempt(payload.assignmentId); })(); }, [inviteToken]);
+  useEffect(() => { void (async () => { const response = await fetch(`/api/invites/${encodeURIComponent(inviteToken)}`); const payload = await response.json(); if (!response.ok) { setMessage(payload.error); return; } setInvite(payload); setAttempt((payload.attempt as Attempt | null) ?? null); setMessage(""); const { data: { user } } = await supabase.auth.getUser(); if (user) await loadAttempt(payload.assignmentId); })(); }, [inviteToken, loadAttempt, supabase]);
 
   const register = async (event: FormEvent) => {
     event.preventDefault(); const valid = validateStudentRegistration(form);
@@ -45,7 +53,7 @@ export function StudentInvite({ inviteToken }: { inviteToken: string }) {
     setCredentials({ username: valid.value.username, password: valid.value.password });
     const { error } = await supabase.auth.signInWithPassword({ email: payload.authEmail, password: valid.value.password });
     if (error) { setMessage(error.message); return; }
-    await loadAttempt(payload.assignmentId); setMessage("Your mission is ready. Start when you are ready.");
+    if (await loadAttempt(payload.assignmentId)) setMessage("Your mission is ready. Start when you are ready.");
   };
 
   if (message && !invite) return <main className="mx-auto max-w-xl px-5 py-16"><div className="card card-lg" role="status">{message}</div></main>;
