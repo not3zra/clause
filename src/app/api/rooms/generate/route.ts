@@ -1,12 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  geminiOutputText,
+  groqOutputText,
   generationRepairInstruction,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
 } from "@/lib/room-generation";
-import { geminiConfiguration } from "../../../../../scripts/gemini-config.mjs";
+import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
 import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedTeacher(request: NextRequest) {
@@ -47,7 +47,6 @@ async function auditGeneration(
       .from("room_generation_audits")
       .insert({
         teacher_id: teacherId,
-        provider: "gemini",
         model,
         stage_count: stageCount,
         outcome,
@@ -72,9 +71,9 @@ export async function POST(request: NextRequest) {
       { error: "Sign in as a teacher to generate a room." },
       { status: 401 },
     );
-  const rate = await durableRateLimit(`generation:${teacherId}`, 12, 3600);
+  const config = groqConfiguration(process.env);
+  const rate = await durableRateLimit(`generation:${teacherId}`, config.perTeacherGenerationHourlyLimit, 3600);
   if (!rate.allowed) return NextResponse.json({ error: "Too many generation requests. Please retry later.", retryable: true }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
-  const config = geminiConfiguration(process.env);
   if (!config.configured) {
     await auditGeneration(
       teacherId,
@@ -154,14 +153,23 @@ export async function POST(request: NextRequest) {
     for (let generationAttempt = 0; generationAttempt < 2; generationAttempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 25_000);
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY!)}`, {
+      const response = await fetch("https://api.groq.com/openai/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: "Create a kid-safe grammar escape-room draft. Return only the requested JSON. Do not include personal data, violence, threats, stereotypes, or unsafe content. Make the supplied theme the actual setting: its story and every stage must use distinct setting-specific people, places, objects, clues, and a final mystery. For Detective Office, use a non-violent case with detectives, evidence, suspects or witnesses, and clues. Do not reuse the sample CASE/FILE/OPEN/SEAL storyline. Match the exercise to its itemType exactly: deterministic stages are sentence classifications with 3-5 items and each item answer is exactly Agrees or Needs revision; free_text stages ask for a specific grammar repair or construction, have no items, and list accepted corrected wording. Verify every answer key against the stated grammar rule before returning it." }] },
-        contents: [{ role: "user", parts: [{ text: JSON.stringify({
+        model: config.model,
+        input: [
+          {
+            role: "system",
+            content:
+              "Create a kid-safe grammar escape-room draft. Return only the requested JSON. Do not include personal data, violence, threats, stereotypes, or unsafe content. Make the supplied theme the actual setting: its story and every stage must use distinct setting-specific people, places, objects, clues, and a final mystery. For Detective Office, use a non-violent case with detectives, evidence, suspects or witnesses, and clues. Do not reuse the sample CASE/FILE/OPEN/SEAL storyline. Match the exercise to its itemType exactly: deterministic stages are sentence classifications with 3-5 items and each item answer is exactly Agrees or Needs revision; free_text stages ask for a specific grammar repair or construction, have no items, and list accepted corrected wording. Verify every answer key against the stated grammar rule before returning it.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
               grade: input.grade,
               topic: input.topic.trim(),
               subtopic: input.subtopic.trim(),
@@ -169,8 +177,17 @@ export async function POST(request: NextRequest) {
               stageCount: input.stageCount,
               instructions: input.instructions?.trim() ?? "",
               repairInstructions: generationAttempt ? generationRepairInstruction(repairErrors) : "",
-            }) }] }],
-        generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema },
+            }),
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "room_draft",
+            strict: true,
+            schema,
+          },
+        },
       }),
       signal: controller.signal,
       });
@@ -182,7 +199,7 @@ export async function POST(request: NextRequest) {
         const message = response.status === 429 ? "AI room generation is rate-limited. Please retry shortly." : "AI room generation is temporarily unavailable. Try again shortly.";
         return NextResponse.json({ error: message, retryable: true }, { status, headers: response.headers.get("retry-after") ? { "Retry-After": response.headers.get("retry-after")! } : undefined });
       }
-      const result = parseGeneratedRoomDraft(geminiOutputText(data), input.stageCount, input.theme);
+      const result = parseGeneratedRoomDraft(groqOutputText(data), input.stageCount, input.theme);
       if (result.ok) {
         await auditGeneration(teacherId, config.model, input.stageCount, "validated");
         return NextResponse.json({ draft: result.value, source: "ai", validation: generationAttempt ? "repaired" : "passed" });

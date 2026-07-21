@@ -1,4 +1,4 @@
-const APPROVED_MODEL = "gemini-2.5-flash-lite";
+const APPROVED_MODEL = "openai/gpt-oss-20b";
 
 function positiveInteger(value, fallback) {
   if (value === undefined || value === "") return fallback;
@@ -7,14 +7,15 @@ function positiveInteger(value, fallback) {
   return parsed;
 }
 
-export function geminiConfiguration(environment) {
-  const model = environment.GEMINI_MODEL || APPROVED_MODEL;
+export function groqConfiguration(environment) {
+  const model = environment.GROQ_MODEL || APPROVED_MODEL;
   if (model !== APPROVED_MODEL) throw new Error(`Model ${model} is not approved for this demo.`);
   return {
-    configured: Boolean(environment.GEMINI_API_KEY?.trim()),
-    missing: environment.GEMINI_API_KEY?.trim() ? [] : ["GEMINI_API_KEY"],
+    configured: Boolean(environment.GROQ_API_KEY?.trim()),
+    missing: environment.GROQ_API_KEY?.trim() ? [] : ["GROQ_API_KEY"],
     model,
     perStudentHourlyLimit: positiveInteger(environment.AI_MAX_REQUESTS_PER_STUDENT_PER_HOUR, 10),
+    perTeacherGenerationHourlyLimit: positiveInteger(environment.AI_MAX_ROOM_GENERATIONS_PER_TEACHER_PER_HOUR, 50),
     globalPerMinuteLimit: positiveInteger(environment.AI_MAX_REQUESTS_PER_MINUTE, 30),
   };
 }
