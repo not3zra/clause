@@ -70,6 +70,7 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   const [answer, setAnswer] = useState("");
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [lockInput, setLockInput] = useState<string[]>([]);
+  const [pendingNextAttempt, setPendingNextAttempt] = useState<Attempt | null>(null);
   const [verdict, setVerdict] = useState<"idle" | "correct" | "revise" | "appeal">("idle");
   const [explanation, setExplanation] = useState("");
   const [appealOpen, setAppealOpen] = useState(false);
@@ -105,6 +106,13 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
 
   const saveStage = async (input: { submitted: string | Record<string, string>; verdict: "correct" | "correct_with_improvement" | "provisional" | "guided"; source: "ai" | "fallback" | "deterministic"; provisionalCredit: boolean; guided: boolean } | boolean) => {
     if (!stage) return;
+    if (typeof input === "boolean" && pendingNextAttempt) {
+      const nextAttempt = pendingNextAttempt;
+      setPendingNextAttempt(null);
+      onAttempt(nextAttempt);
+      resetForNextStage(nextAttempt);
+      return nextAttempt;
+    }
     const { submitted, verdict, source, provisionalCredit, guided } = typeof input === "boolean"
       ? { submitted: stage.itemType === "deterministic" ? choices : answer, verdict: "guided" as const, source: stage.itemType === "deterministic" ? "deterministic" as const : "fallback" as const, provisionalCredit: false, guided: input }
       : input;
@@ -123,8 +131,11 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
     if (error) { onMessage(error.message); return; }
     const nextAttempt = await refreshAttempt();
     if (!nextAttempt) return;
-    onAttempt(nextAttempt);
-    resetForNextStage(nextAttempt);
+    if (typeof input === "boolean") {
+      onAttempt(nextAttempt);
+      resetForNextStage(nextAttempt);
+    }
+    return nextAttempt;
   };
 
   const markWrong = async (submitted: string | Record<string, string>, source: "ai" | "fallback" | "deterministic") => {
@@ -155,7 +166,7 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
   };
 
   const submit = async () => {
-    if (!stage || attempt.current_stage >= stages.length) return;
+    if (!stage || pendingNextAttempt || attempt.current_stage >= stages.length) return;
     const submitted = stage.itemType === "deterministic" ? choices : answer;
     let correct = roomStageIsCorrect(stage, submitted);
     let gradingResult: GradingResult | null = null;
@@ -171,10 +182,12 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
     }
     const source = stage.itemType === "deterministic" ? "deterministic" : gradingResult?.source ?? "fallback";
     if (!correct) { await markWrong(submitted, source); return; }
-    setVerdict("correct");
     const result = gradingResult;
-    await saveStage({ submitted, verdict: result?.verdict === "provisional" ? "provisional" : result?.verdict === "correct_with_improvement" ? "correct_with_improvement" : "correct", source, provisionalCredit: result?.provisionalCredit === true, guided: false });
-    onMessage(recoveredTokens.length + 1 >= stages.length ? "All tokens recovered. Solve the final clue." : "Stage saved. Opening the next challenge.");
+    const nextAttempt = await saveStage({ submitted, verdict: result?.verdict === "provisional" ? "provisional" : result?.verdict === "correct_with_improvement" ? "correct_with_improvement" : "correct", source, provisionalCredit: result?.provisionalCredit === true, guided: false });
+    if (!nextAttempt) return;
+    setPendingNextAttempt(nextAttempt);
+    setVerdict("correct");
+    onMessage(recoveredTokens.length + 1 >= stages.length ? "All tokens recovered. Open the final clue when you are ready." : "Answer saved. Continue when you are ready.");
   };
 
   const submitAppeal = async () => {
@@ -207,5 +220,5 @@ function AssignedMission({ attempt, invite, onAttempt, onMessage, supabase }: { 
 
 function FeedbackPanelStudent({ answerRevealed, appealOpen, attempts, onAppealOpen, onAppealSubmit, onGuidedContinue, rule, acceptedAnswers, rubric, verdict, aiFeedback }: { answerRevealed: boolean; appealOpen: boolean; attempts: number; onAppealOpen: () => void; onAppealSubmit: () => void; onGuidedContinue: () => void; rule: string; acceptedAnswers: string[]; rubric: string; verdict: "idle" | "correct" | "revise" | "appeal"; aiFeedback: GradingResult | null; }) {
   if (verdict === "idle") return null;
-  return <div className={`feedback-panel ${verdict === "correct" ? "correct" : verdict === "appeal" ? "appeal" : "revise"}`}><div className="fb-label"><span className="fb-icon">{verdict === "correct" ? "OK" : verdict === "appeal" ? "..." : "!"}</span>{verdict === "correct" ? "Evidence verified" : verdict === "appeal" ? "Awaiting review" : "Needs revision"}</div><p style={{ fontSize: 13, marginTop: 4, color: "var(--text)" }}>Rule: {aiFeedback?.ruleCheck ?? rule}</p>{verdict === "revise" && <div className="fb-hint">{answerRevealed ? "Answer key: " : "Hint: "}{answerRevealed ? acceptedAnswers.join("; ") : aiFeedback?.hint ?? rubric}</div>}{answerRevealed && <button className="btn btn-secondary btn-sm" onClick={onGuidedContinue} style={{ marginTop: 12 }} type="button">Continue with guidance</button>}{!answerRevealed && !appealOpen && verdict === "revise" && <button className="btn btn-ghost btn-sm" onClick={onAppealOpen} style={{ marginTop: 12 }} type="button">Challenge this result</button>}{appealOpen && <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}><label className="label">Optional explanation</label><textarea className="input" placeholder="Tell your teacher what you intended." style={{ marginTop: 6 }} /><button className="btn btn-secondary btn-sm" onClick={onAppealSubmit} style={{ marginTop: 8 }} type="button">Submit challenge</button></div>}{attempts > 0 && <p style={{ fontSize: 12, marginTop: 8 }}>Attempts: {attempts}</p>}</div>;
+  return <div className={`feedback-panel ${verdict === "correct" ? "correct" : verdict === "appeal" ? "appeal" : "revise"}`}><div className="fb-label"><span className="fb-icon">{verdict === "correct" ? "OK" : verdict === "appeal" ? "..." : "!"}</span>{verdict === "correct" ? "Evidence verified" : verdict === "appeal" ? "Awaiting review" : "Needs revision"}</div><p style={{ fontSize: 13, marginTop: 4, color: "var(--text)" }}>Rule: {aiFeedback?.ruleCheck ?? rule}</p>{verdict === "revise" && <div className="fb-hint">{answerRevealed ? "Answer key: " : "Hint: "}{answerRevealed ? acceptedAnswers.join("; ") : aiFeedback?.hint ?? rubric}</div>}{(answerRevealed || verdict === "correct") && <button className="btn btn-secondary btn-sm" onClick={onGuidedContinue} style={{ marginTop: 12 }} type="button">{verdict === "correct" ? "Next challenge" : "Continue with guidance"}</button>}{!answerRevealed && !appealOpen && verdict === "revise" && <button className="btn btn-ghost btn-sm" onClick={onAppealOpen} style={{ marginTop: 12 }} type="button">Challenge this result</button>}{appealOpen && <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}><label className="label">Optional explanation</label><textarea className="input" placeholder="Tell your teacher what you intended." style={{ marginTop: 6 }} /><button className="btn btn-secondary btn-sm" onClick={onAppealSubmit} style={{ marginTop: 8 }} type="button">Submit challenge</button></div>}{attempts > 0 && <p style={{ fontSize: 12, marginTop: 8 }}>Attempts: {attempts}</p>}</div>;
 }
