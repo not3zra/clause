@@ -96,27 +96,50 @@ export function groqFailedGenerationText(data: unknown) {
   return typeof failed === "string" ? failed : "";
 }
 
-export function roomGenerationTool(stageCount: 3 | 4) {
+export function providerResponseFormat(stageCount: 3 | 4) {
+  const stageSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["ordinal", "title", "prompt", "rule", "token", "itemType", "acceptedAnswers", "rubric", "hints", "items"],
+    properties: {
+      ordinal: { type: "integer", minimum: 1, maximum: stageCount },
+      title: { type: "string", minLength: 1 },
+      prompt: { type: "string", minLength: 1 },
+      rule: { type: "string", minLength: 1 },
+      token: { type: "string", minLength: 1, maxLength: 32 },
+      itemType: { type: "string", enum: ["deterministic", "free_text"] },
+      acceptedAnswers: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+      rubric: { type: "string", minLength: 1 },
+      hints: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["prompt", "acceptedAnswers"],
+          properties: {
+            prompt: { type: "string", minLength: 1 },
+            acceptedAnswers: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+          },
+        },
+      },
+    },
+  };
   return {
-    type: "function" as const,
-    function: {
-      name: "create_room_draft",
-      description: `Create one complete ${stageCount}-stage, age-appropriate grammar escape-room draft.`,
-      parameters: {
+    type: "json_schema" as const,
+    json_schema: {
+      name: "room_draft",
+      strict: true,
+      schema: {
         type: "object",
         additionalProperties: false,
         required: ["title", "story", "grade", "difficulty", "stages"],
         properties: {
-          title: { type: "string" },
-          story: { type: "string" },
+          title: { type: "string", minLength: 1 },
+          story: { type: "string", minLength: 1 },
           grade: { type: "integer", minimum: 6, maximum: 9 },
           difficulty: { type: "string", enum: ["supported", "standard", "stretch"] },
-          stages: {
-            type: "array",
-            minItems: stageCount,
-            maxItems: stageCount,
-            items: { type: "object" },
-          },
+          stages: { type: "array", minItems: stageCount, maxItems: stageCount, items: stageSchema },
         },
       },
     },

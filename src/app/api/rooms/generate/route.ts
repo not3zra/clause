@@ -7,11 +7,11 @@ import {
   groqFailedGenerationText,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
-  roomGenerationTool,
+  providerResponseFormat,
   roomGenerationSystemInstruction,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
-import { generationFailureCode, providerFailureCode, providerFailureDetails, shouldRetryProviderFailure } from "@/lib/generation-diagnostics";
+import { generationFailureCode, groqRetryDelaySeconds, providerFailureCode, providerFailureDetails, shouldRetryProviderFailure } from "@/lib/generation-diagnostics";
 import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedTeacher(request: NextRequest) {
@@ -95,42 +95,48 @@ export async function POST(request: NextRequest) {
   try {
     let repairErrors: string[] = [];
     for (let generationAttempt = 0; generationAttempt < 2; generationAttempt += 1) {
-      const controller = new AbortController();
-      timedOut = false;
-      const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          {
-            role: "system",
-            content: roomGenerationSystemInstruction,
+      let response: Response;
+      let data: unknown;
+      let groqRetries = 0;
+      while (true) {
+        const controller = new AbortController();
+        timedOut = false;
+        const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
+        response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           },
-          {
-            role: "user",
-            content: JSON.stringify({
-              grade: input.grade,
-              topic: input.topic.trim(),
-              subtopic: input.subtopic.trim(),
-              theme: input.theme.trim(),
-              stageCount: input.stageCount,
-              instructions: input.instructions?.trim() ?? "",
-              repairInstructions: generationAttempt ? generationRepairInstruction(repairErrors, input.stageCount) : "",
-            }),
-          },
-        ],
-        tools: [roomGenerationTool(input.stageCount)],
-        tool_choice: { type: "function", function: { name: "create_room_draft" } },
-      }),
-      signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      const data = await response.json().catch(() => null);
+          body: JSON.stringify({
+            model: config.model,
+            messages: [
+              { role: "system", content: roomGenerationSystemInstruction },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  grade: input.grade,
+                  topic: input.topic.trim(),
+                  subtopic: input.subtopic.trim(),
+                  theme: input.theme.trim(),
+                  stageCount: input.stageCount,
+                  instructions: input.instructions?.trim() ?? "",
+                  repairInstructions: generationAttempt ? generationRepairInstruction(repairErrors, input.stageCount) : "",
+                }),
+              },
+            ],
+            max_completion_tokens: 4096,
+            response_format: providerResponseFormat(input.stageCount),
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        data = await response.json().catch(() => null);
+        if (response.status !== 429 || groqRetries >= 3) break;
+        groqRetries += 1;
+        const message = (data as { error?: { message?: unknown } } | null)?.error?.message;
+        await new Promise((resolve) => setTimeout(resolve, groqRetryDelaySeconds(message) * 1000));
+      }
       if (!response.ok) {
         const failedDraft = groqFailedGenerationText(data);
         if (response.status === 400 && failedDraft) {
@@ -151,6 +157,12 @@ export async function POST(request: NextRequest) {
         if (generationAttempt === 0 && shouldRetryProviderFailure(response.status, code)) continue;
         await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
         console.warn("room_generation_unavailable", JSON.stringify({ code, ...providerFailureDetails(data) }));
+        if (response.status === 413) {
+          return NextResponse.json(
+            { error: "AI room generation request is too large. Shorten the topic or instructions and try again.", retryable: false },
+            { status: 400 },
+          );
+        }
         if (response.status === 429) {
           return NextResponse.json(
             { error: "AI room generation is rate-limited. Please retry shortly.", retryable: true },

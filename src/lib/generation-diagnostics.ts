@@ -25,6 +25,12 @@ export function shouldRetryProviderFailure(status: number, code: string) {
   return status !== 429 && (code === "provider_http_400" || status >= 500);
 }
 
+export function groqRetryDelaySeconds(message: unknown) {
+  const matched = typeof message === "string" ? message.match(/try again in ([\d.]+)s/i) : null;
+  const seconds = matched ? Number(matched[1]) : 5;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 30) : 5;
+}
+
 function safeProviderField(value: unknown) {
   return typeof value === "string" && /^[a-z0-9._-]{1,64}$/i.test(value) ? value : undefined;
 }
