@@ -22,8 +22,8 @@ describe("GET /api/attempts/[assignmentId]", () => {
     process.env.SUPABASE_SECRET_KEY = "server-test-key";
 
     mocks.getUser.mockResolvedValue({ data: { user: { id: "student-1" } } });
-    mocks.enrolmentMaybeSingle.mockResolvedValue({ data: { id: "enrolment-1" }, error: null });
-    mocks.attemptMaybeSingle.mockResolvedValue({ data: { id: "attempt-1", current_stage: 0, recovered_tokens: [] }, error: null });
+    mocks.enrolmentMaybeSingle.mockResolvedValue({ data: { id: "enrolment-1", assignment: { published_room_version_id: "version-1" } }, error: null });
+    mocks.attemptMaybeSingle.mockResolvedValue({ data: { id: "attempt-1", room_version_id: "version-1", current_stage: 0, recovered_tokens: [] }, error: null });
     const enrolmentQuery = { select: vi.fn(), eq: vi.fn(), maybeSingle: mocks.enrolmentMaybeSingle };
     enrolmentQuery.select.mockReturnValue(enrolmentQuery);
     enrolmentQuery.eq.mockReturnValue(enrolmentQuery);
@@ -42,7 +42,7 @@ describe("GET /api/attempts/[assignmentId]", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ id: "attempt-1", current_stage: 0, recovered_tokens: [] });
+    await expect(response.json()).resolves.toEqual({ id: "attempt-1", room_version_id: "version-1", current_stage: 0, recovered_tokens: [] });
     expect(mocks.enrolmentMaybeSingle).toHaveBeenCalledOnce();
     expect(mocks.attemptMaybeSingle).toHaveBeenCalledOnce();
   });

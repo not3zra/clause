@@ -53,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (profileError) { await admin.auth.admin.deleteUser(studentId); return NextResponse.json({ error: profileError.message }, { status: 400 }); }
     const { data: enrolment, error: enrolmentError } = await admin.from("student_assignments").insert({ student_id: studentId, assignment_id: invite.id }).select("id").single();
     if (enrolmentError) { await admin.auth.admin.deleteUser(studentId); return NextResponse.json({ error: enrolmentError.message }, { status: 400 }); }
-    const { error: attemptError } = await admin.from("mission_attempts").insert({ student_assignment_id: enrolment.id });
+    const { error: attemptError } = await admin.from("mission_attempts").insert({ student_assignment_id: enrolment.id, room_version_id: invite.version.id });
     if (attemptError) return NextResponse.json({ error: attemptError.message }, { status: 400 });
     return NextResponse.json({ assignmentId: invite.id, enrolmentId: enrolment.id, authEmail: studentAuthEmail(input.value.username) }, { status: 201 });
   } catch { return NextResponse.json({ error: "Student registration is unavailable." }, { status: 503 }); }
