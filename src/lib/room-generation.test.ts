@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationRepairInstruction, groqOutputText, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { geminiOutputText, generationRepairInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -17,11 +17,10 @@ describe("generated room validation", () => {
     expect(parseGeneratedRoomDraft(`Here is your draft: ${JSON.stringify(valid)} Please review it.`, 3)).toMatchObject({ ok: true });
     expect(parseGeneratedRoomDraft("{not json", 3)).toEqual({ ok: false, errors: ["The generation response was not valid JSON."] });
   });
-  it("reads either Groq response text shape", () => {
-    expect(groqOutputText({ output_text: "draft" })).toBe("draft");
-    expect(groqOutputText({ output: [{ content: [{ type: "output_text", text: "nested draft" }] }] })).toBe("nested draft");
-    expect(groqOutputText({ output: [{ content: [{ type: "output_json", json: { draft: true } }] }] })).toBe('{"draft":true}');
-    expect(groqOutputText({ output: { content: [{ type: "output_text", text: "object output" }] } })).toBe("object output");
+  it("reads Gemini candidate text", () => {
+    expect(geminiOutputText({ candidates: [{ content: { parts: [{ text: "draft" }] } }] })).toBe("draft");
+    expect(geminiOutputText({ candidates: [{ content: { parts: [{ text: "nested draft" }] } }] })).toBe("nested draft");
+    expect(geminiOutputText({ candidates: [] })).toBe("");
   });
   it("turns validation failures into an explicit complete-draft retry instruction", () => {
     const instruction = generationRepairInstruction(["Stage 1 needs an accepted answer.", "Each stage needs a unique token."]);
