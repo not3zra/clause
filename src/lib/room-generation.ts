@@ -58,6 +58,10 @@ export function groqOutputText(data: unknown) {
   return "";
 }
 
+export function generationRepairInstruction(errors: string[]) {
+  return `Your previous draft was rejected for: ${errors.join(" ")} Return a complete replacement JSON draft, not commentary. Every stage must have a non-empty token that is unique within the room, at least one accepted answer, at least one hint, and all required learning-content fields. Deterministic items must each have exactly one answer: Agrees or Needs revision.`;
+}
+
 export type RoomGenerationInput = { grade: number; topic: string; subtopic: string; theme: string; stageCount: 3 | 4; instructions?: string };
 export function isRoomGenerationInput(value: unknown): value is RoomGenerationInput {
   const input = value as Partial<RoomGenerationInput>;

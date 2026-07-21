@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import {
   groqOutputText,
+  generationRepairInstruction,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
 } from "@/lib/room-generation";
@@ -104,15 +105,15 @@ export async function POST(request: NextRequest) {
       "items",
     ],
     properties: {
-      ordinal: { type: "integer" },
-      title: { type: "string" },
-      prompt: { type: "string" },
-      rule: { type: "string" },
-      token: { type: "string" },
+      ordinal: { type: "integer", minimum: 1 },
+      title: { type: "string", minLength: 1 },
+      prompt: { type: "string", minLength: 1 },
+      rule: { type: "string", minLength: 1 },
+      token: { type: "string", minLength: 1, maxLength: 32 },
       itemType: { type: "string", enum: ["deterministic", "free_text"] },
-      acceptedAnswers: { type: "array", items: { type: "string" } },
-      rubric: { type: "string" },
-      hints: { type: "array", items: { type: "string" } },
+      acceptedAnswers: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+      rubric: { type: "string", minLength: 1 },
+      hints: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
       items: {
         type: "array",
         items: {
@@ -120,8 +121,8 @@ export async function POST(request: NextRequest) {
           additionalProperties: false,
           required: ["prompt", "acceptedAnswers"],
           properties: {
-            prompt: { type: "string" },
-            acceptedAnswers: { type: "array", items: { type: "string" } },
+            prompt: { type: "string", minLength: 1 },
+            acceptedAnswers: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
           },
         },
       },
@@ -132,8 +133,8 @@ export async function POST(request: NextRequest) {
     additionalProperties: false,
     required: ["title", "story", "grade", "difficulty", "stages"],
     properties: {
-      title: { type: "string" },
-      story: { type: "string" },
+      title: { type: "string", minLength: 1 },
+      story: { type: "string", minLength: 1 },
       grade: { type: "integer" },
       difficulty: {
         type: "string",
@@ -148,9 +149,11 @@ export async function POST(request: NextRequest) {
     },
   };
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25_000);
-    const response = await fetch("https://api.groq.com/openai/v1/responses", {
+    let repairErrors: string[] = [];
+    for (let generationAttempt = 0; generationAttempt < 2; generationAttempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25_000);
+      const response = await fetch("https://api.groq.com/openai/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -173,6 +176,7 @@ export async function POST(request: NextRequest) {
               theme: input.theme.trim(),
               stageCount: input.stageCount,
               instructions: input.instructions?.trim() ?? "",
+              repairInstructions: generationAttempt ? generationRepairInstruction(repairErrors) : "",
             }),
           },
         ],
@@ -186,57 +190,27 @@ export async function POST(request: NextRequest) {
         },
       }),
       signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    const data = await response.json();
-    if (!response.ok) {
-      await auditGeneration(
-        teacherId,
-        config.model,
-        input.stageCount,
-        "unavailable",
-      );
-      const status = response.status === 429 ? 429 : 503;
-      const message =
-        response.status === 429
-          ? "AI room generation is rate-limited. Please retry shortly."
-          : "AI room generation is temporarily unavailable. Try again shortly.";
-      return NextResponse.json(
-        { error: message, retryable: true },
-        {
-          status,
-          headers: response.headers.get("retry-after")
-            ? { "Retry-After": response.headers.get("retry-after")! }
-            : undefined,
-        },
-      );
-    }
-    const output = groqOutputText(data);
-    const result = parseGeneratedRoomDraft(output, input.stageCount, input.theme);
-    if (result.ok) {
-      await auditGeneration(
-        teacherId,
-        config.model,
-        input.stageCount,
-        "validated",
-      );
-      return NextResponse.json({
-        draft: result.value,
-        source: "ai",
-        validation: "passed",
       });
+      clearTimeout(timeout);
+      const data = await response.json();
+      if (!response.ok) {
+        await auditGeneration(teacherId, config.model, input.stageCount, "unavailable");
+        const status = response.status === 429 ? 429 : 503;
+        const message = response.status === 429 ? "AI room generation is rate-limited. Please retry shortly." : "AI room generation is temporarily unavailable. Try again shortly.";
+        return NextResponse.json({ error: message, retryable: true }, { status, headers: response.headers.get("retry-after") ? { "Retry-After": response.headers.get("retry-after")! } : undefined });
+      }
+      const result = parseGeneratedRoomDraft(groqOutputText(data), input.stageCount, input.theme);
+      if (result.ok) {
+        await auditGeneration(teacherId, config.model, input.stageCount, "validated");
+        return NextResponse.json({ draft: result.value, source: "ai", validation: generationAttempt ? "repaired" : "passed" });
+      }
+      repairErrors = result.errors;
     }
-    await auditGeneration(
-      teacherId,
-      config.model,
-      input.stageCount,
-      "rejected",
-      result.errors,
-    );
+    await auditGeneration(teacherId, config.model, input.stageCount, "rejected", repairErrors);
     return NextResponse.json(
       {
         error: "Generated draft needs revision.",
-        errors: result.errors,
+        errors: repairErrors,
         retryable: true,
       },
       { status: 422 },
