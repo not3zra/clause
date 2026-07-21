@@ -20,3 +20,7 @@ export function providerFailureCode(status: number, message: unknown) {
   if (/invalid request|parameter|\binput\b|\bmessages?\b|\bcontent\b/i.test(message)) return "provider_input_rejected";
   return "provider_http_400";
 }
+
+export function shouldRetryProviderFailure(status: number, code: string) {
+  return status !== 429 && (code === "provider_http_400" || status >= 500);
+}
