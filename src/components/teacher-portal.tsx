@@ -8,6 +8,7 @@ import { scoreForProgress } from "../lib/mission";
 import { RoomStage, validateRoomStages } from "../lib/room-stages";
 import { AnalyticsAttempt, buildAnalytics, summarizeAttempts, toAnalyticsCsv } from "../lib/teacher-metrics";
 import { teacherSignUpMessage } from "../lib/teacher-auth";
+import { teacherSessionView } from "../lib/teacher-session-view";
 import { Turnstile } from "./turnstile";
 
 type TeacherClass = { id: string; name: string; grade: number };
@@ -62,6 +63,8 @@ export function TeacherPortal() {
   const [turnstileToken, setTurnstileToken] = useState("");
   const [message, setMessage] = useState("");
   const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [teacherEmail, setTeacherEmail] = useState<string | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
   const [classes, setClasses] = useState<TeacherClass[]>([]);
   const [analyticsRooms, setAnalyticsRooms] = useState<AnalyticsRoom[]>([]);
   const [className, setClassName] = useState("");
@@ -129,12 +132,13 @@ export function TeacherPortal() {
   }, [supabase]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    void supabase.auth.getUser().then(({ data }) => {
       if (data.user) {
+        setTeacherEmail(data.user.email ?? null);
         void loadClasses(data.user.id);
         void loadResults();
       }
-    });
+    }).finally(() => setSessionResolved(true));
   }, [supabase, loadClasses, loadResults]);
 
   const submitAuth = async (event: FormEvent) => {
@@ -151,7 +155,15 @@ export function TeacherPortal() {
     const result = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (result.error) setMessage(result.error.message);
-    else if (result.data.user) await loadClasses(result.data.user.id);
+    else if (result.data.user) { setTeacherEmail(result.data.user.email ?? null); setSessionResolved(true); await loadClasses(result.data.user.id); }
+  };
+
+  const signOut = async () => {
+    setBusy(true);
+    const { error } = await supabase.auth.signOut();
+    setBusy(false);
+    if (error) { setMessage(error.message); return; }
+    setTeacherId(null); setTeacherEmail(null); setClasses([]); setAnalyticsRooms([]); setAttempts([]); setAppeals([]); setRoom(null); setAssignment(null); setDraftStages([]); setMessage("Signed out.");
   };
 
   const createClass = async (event: FormEvent) => {
@@ -536,7 +548,9 @@ export function TeacherPortal() {
     }
   };
 
-  if (!teacherId)
+  const sessionView = teacherSessionView(sessionResolved, teacherId);
+  if (sessionView === "loading") return <section className="mx-auto max-w-md px-5 py-12"><div className="panel" role="status"><p className="eyebrow">Teacher access</p><h1 className="mt-2 text-3xl font-black">Checking your session…</h1><p className="mt-3 text-[#59677a]">Preparing your teacher portal.</p></div></section>;
+  if (sessionView === "signed_out")
     return (
       <section className="mx-auto max-w-md px-5 py-12">
         <div className="panel">
@@ -611,7 +625,7 @@ export function TeacherPortal() {
   return (
     <section className="mx-auto max-w-3xl px-5 py-12">
       <div className="panel">
-        <p className="eyebrow">Your classes</p>
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Signed in{teacherEmail ? ` as ${teacherEmail}` : ""}</p><button className="ghost-action" disabled={busy} onClick={signOut} type="button">Sign out</button></div>
         <h1 className="mt-2 text-3xl font-black">
           Create and publish a grammar room
         </h1>
