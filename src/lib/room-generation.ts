@@ -65,10 +65,10 @@ export function groqFailedGenerationText(data: unknown) {
   return typeof failed === "string" ? failed : "";
 }
 
-export function providerStageCountSchema() {
-  // Let our validator inspect partial drafts and give the model a targeted repair
-  // instruction. Groq otherwise rejects a short draft before we can retry it.
-  return { minItems: 1 };
+export function providerResponseFormat() {
+  // The application validator owns semantic checks and repair. JSON Object mode
+  // avoids Groq rejecting an imperfect draft before that repair can run.
+  return { type: "json_object" };
 }
 
 export function generationRepairInstruction(errors: string[], stageCount: number) {
