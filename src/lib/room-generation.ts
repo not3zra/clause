@@ -9,7 +9,29 @@ const themeTerms: Record<string, string[]> = {
   "Sci-Fi Lab": ["lab", "robot", "orbit", "station", "signal", "scientist", "console", "reactor"],
 };
 
-export const roomGenerationSystemInstruction = "Create a kid-safe grammar escape-room draft. Return only the requested JSON. Do not include personal data, violence, threats, stereotypes, or unsafe content. Make the supplied theme the actual setting: its story and every stage must use distinct setting-specific people, places, objects, clues, and a final mystery. For Detective Office, use a non-violent case with detectives, evidence, suspects or witnesses, and clues. Do not reuse the sample CASE/FILE/OPEN/SEAL storyline. Match the exercise to its itemType exactly: deterministic stages are sentence classifications with 3-5 items and each item answer is exactly Agrees or Needs revision; free_text stages ask for a specific grammar repair or construction, must include items: [], and list accepted corrected wording. Verify every answer key against the stated grammar rule before returning it.";
+export const roomGenerationSystemInstruction = `Create a kid-safe grammar escape-room draft. Return only one complete JSON object, with no markdown or commentary. Do not include personal data, violence, threats, stereotypes, or unsafe content. Make the supplied theme the actual setting: its story and every stage must use distinct setting-specific people, places, objects, clues, and a final mystery. For Detective Office, use a non-violent case with detectives, evidence, suspects or witnesses, and clues. Do not reuse the CASE/FILE/OPEN/SEAL storyline.
+
+Use this exact shape and field names:
+{
+  "title": "string",
+  "story": "string",
+  "grade": 6,
+  "difficulty": "standard",
+  "stages": [{
+    "ordinal": 1,
+    "title": "string",
+    "prompt": "string",
+    "rule": "string",
+    "token": "unique non-empty string",
+    "itemType": "free_text",
+    "acceptedAnswers": ["answer"],
+    "rubric": "specific grammar explanation",
+    "hints": ["at least one non-empty hint"],
+    "items": []
+  }]
+}
+
+Copy the requested grade and create exactly the requested number of sequential stages. Every token must be unique. A free_text stage asks for one specific grammar repair or construction and must use "items": [] (the items: [] field must be present). A deterministic stage is a sentence classification: it must have exactly 3-5 items, and every item must be valid JSON shaped like { "prompt": "string", "acceptedAnswers": ["Agrees"] } or { "prompt": "string", "acceptedAnswers": ["Needs revision"] }. Every deterministic item answer must be exactly Agrees or Needs revision. Verify every answer key against the stated grammar rule before returning the JSON.`;
 
 export function validateGeneratedRoomDraft(value: unknown, stageCount: number, theme?: string): Validation {
   const draft = value as Partial<GeneratedRoomDraft>;
@@ -43,7 +65,7 @@ export function parseGeneratedRoomDraft(outputText: string, stageCount: number, 
 }
 
 export function groqOutputText(data: unknown) {
-  const response = data as { output_text?: unknown; output?: unknown };
+  const response = data as { output_text?: unknown; output?: unknown; choices?: unknown };
   if (typeof response?.output_text === "string") return response.output_text;
   const output = Array.isArray(response?.output) ? response.output : [response?.output];
   for (const item of output) {
@@ -57,6 +79,15 @@ export function groqOutputText(data: unknown) {
       if (value.type === "output_json" && value.json !== undefined) return JSON.stringify(value.json);
     }
   }
+  const choices = Array.isArray(response?.choices) ? response.choices : [];
+  for (const choice of choices) {
+    const calls = (choice as { message?: { tool_calls?: unknown } } | null)?.message?.tool_calls;
+    if (!Array.isArray(calls)) continue;
+    for (const call of calls) {
+      const argumentsText = (call as { function?: { arguments?: unknown } } | null)?.function?.arguments;
+      if (typeof argumentsText === "string") return argumentsText;
+    }
+  }
   return "";
 }
 
@@ -65,10 +96,31 @@ export function groqFailedGenerationText(data: unknown) {
   return typeof failed === "string" ? failed : "";
 }
 
-export function providerResponseFormat() {
-  // The application validator owns semantic checks and repair. JSON Object mode
-  // avoids Groq rejecting an imperfect draft before that repair can run.
-  return { type: "json_object" };
+export function roomGenerationTool(stageCount: 3 | 4) {
+  return {
+    type: "function" as const,
+    function: {
+      name: "create_room_draft",
+      description: `Create one complete ${stageCount}-stage, age-appropriate grammar escape-room draft.`,
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "story", "grade", "difficulty", "stages"],
+        properties: {
+          title: { type: "string" },
+          story: { type: "string" },
+          grade: { type: "integer", minimum: 6, maximum: 9 },
+          difficulty: { type: "string", enum: ["supported", "standard", "stretch"] },
+          stages: {
+            type: "array",
+            minItems: stageCount,
+            maxItems: stageCount,
+            items: { type: "object" },
+          },
+        },
+      },
+    },
+  };
 }
 
 export function generationRepairInstruction(errors: string[], stageCount: number) {

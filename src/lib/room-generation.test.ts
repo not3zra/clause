@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fallbackGeneratedRoomDraft, fallbackRoomGenerationResponse, generationRepairInstruction, groqFailedGenerationText, groqOutputText, providerResponseFormat, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { fallbackGeneratedRoomDraft, fallbackRoomGenerationResponse, generationRepairInstruction, groqFailedGenerationText, groqOutputText, roomGenerationTool, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -22,6 +22,7 @@ describe("generated room validation", () => {
     expect(groqOutputText({ output: [{ content: [{ type: "output_text", text: "nested draft" }] }] })).toBe("nested draft");
     expect(groqOutputText({ output: [{ content: [{ type: "output_json", json: { draft: true } }] }] })).toBe('{"draft":true}');
     expect(groqOutputText({ output: { content: [{ type: "output_text", text: "object output" }] } })).toBe("object output");
+    expect(groqOutputText({ choices: [{ message: { tool_calls: [{ function: { arguments: '{"draft":true}' } }] } }] })).toBe('{"draft":true}');
   });
   it("reads a provider-rejected draft without exposing the provider error message", () => {
     expect(groqFailedGenerationText({ error: { message: "schema validation failed", failed_generation: '{"title":"partial"}' } })).toBe('{"title":"partial"}');
@@ -33,11 +34,21 @@ describe("generated room validation", () => {
     expect(instruction).toContain("Stage 1 needs an accepted answer.");
     expect(instruction).toContain("Every stage must have a non-empty token");
   });
-  it("uses JSON Object mode so local validation can repair imperfect drafts", () => {
-    expect(providerResponseFormat()).toEqual({ type: "json_object" });
+  it("uses a function schema that requires the requested number of stages", () => {
+    expect(roomGenerationTool(3)).toMatchObject({
+      type: "function",
+      function: { name: "create_room_draft", parameters: { properties: { stages: { minItems: 3, maxItems: 3 } } } },
+    });
   });
   it("tells free-text stages to include the required empty items array", () => {
     expect(roomGenerationSystemInstruction).toContain("items: []");
+  });
+  it("spells out every validator-required draft field for the model", () => {
+    for (const field of ["difficulty", "ordinal", "acceptedAnswers", "rubric", "hints", "itemType", "items"]) {
+      expect(roomGenerationSystemInstruction).toContain(field);
+    }
+    expect(roomGenerationSystemInstruction).toContain("exactly 3-5 items");
+    expect(roomGenerationSystemInstruction).toContain("Agrees or Needs revision");
   });
   it("provides a validated theme-specific fallback after failed AI retries", () => {
     const fallback = fallbackGeneratedRoomDraft({ grade: 7, topic: "Clauses", subtopic: "Dependent clauses", theme: "Detective Office", stageCount: 3 });

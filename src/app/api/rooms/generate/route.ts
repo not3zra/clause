@@ -7,7 +7,7 @@ import {
   groqFailedGenerationText,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
-  providerResponseFormat,
+  roomGenerationTool,
   roomGenerationSystemInstruction,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       const controller = new AbortController();
       timedOut = false;
       const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
-      const response = await fetch("https://api.groq.com/openai/v1/responses", {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model: config.model,
-        input: [
+        messages: [
           {
             role: "system",
             content: roomGenerationSystemInstruction,
@@ -124,9 +124,8 @@ export async function POST(request: NextRequest) {
             }),
           },
         ],
-        text: {
-          format: providerResponseFormat(),
-        },
+        tools: [roomGenerationTool(input.stageCount)],
+        tool_choice: { type: "function", function: { name: "create_room_draft" } },
       }),
       signal: controller.signal,
       });
