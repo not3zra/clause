@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/purity -- the decorative launch icon intentionally varies by visit. */
+
 import { createBrowserClient } from "@supabase/ssr";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { evidenceCards, missionStages, stageGuidance, stageIsCorrect, type MissionStageId } from "../lib/mission";
