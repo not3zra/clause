@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fallbackGeneratedRoomDraft, generationRepairInstruction, groqFailedGenerationText, groqOutputText, providerResponseFormat, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { fallbackGeneratedRoomDraft, fallbackRoomGenerationResponse, generationRepairInstruction, groqFailedGenerationText, groqOutputText, providerResponseFormat, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -43,5 +43,11 @@ describe("generated room validation", () => {
     const fallback = fallbackGeneratedRoomDraft({ grade: 7, topic: "Clauses", subtopic: "Dependent clauses", theme: "Detective Office", stageCount: 3 });
     expect(validateGeneratedRoomDraft(fallback, 3, "Detective Office")).toMatchObject({ ok: true });
     expect(fallback.stages).toHaveLength(3);
+  });
+
+  it("keeps room generation available with a validated fallback after a provider rejection", () => {
+    const response = fallbackRoomGenerationResponse({ grade: 7, topic: "Clauses", subtopic: "Dependent clauses", theme: "Detective Office", stageCount: 3 });
+    expect(response).toMatchObject({ source: "fallback", validation: "fallback" });
+    expect(validateGeneratedRoomDraft(response.draft, 3, "Detective Office")).toMatchObject({ ok: true });
   });
 });

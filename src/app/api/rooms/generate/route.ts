@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   groqOutputText,
   generationRepairInstruction,
-  fallbackGeneratedRoomDraft,
+  fallbackRoomGenerationResponse,
   groqFailedGenerationText,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
@@ -89,13 +89,7 @@ export async function POST(request: NextRequest) {
       [code],
     );
     console.warn("room_generation_unavailable", code);
-    return NextResponse.json(
-      {
-        error:
-          "AI room generation is temporarily unavailable. Try again shortly.",
-      },
-      { status: 503 },
-    );
+    return NextResponse.json(fallbackRoomGenerationResponse(input));
   }
   let timedOut = false;
   try {
@@ -157,15 +151,19 @@ export async function POST(request: NextRequest) {
         const code = providerFailureCode(response.status, providerMessage);
         await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
         console.warn("room_generation_unavailable", code);
-        const status = response.status === 429 ? 429 : 503;
-        const message = response.status === 429 ? "AI room generation is rate-limited. Please retry shortly." : "AI room generation is temporarily unavailable. Try again shortly.";
-        return NextResponse.json({ error: message, retryable: true }, { status, headers: response.headers.get("retry-after") ? { "Retry-After": response.headers.get("retry-after")! } : undefined });
+        if (response.status === 429) {
+          return NextResponse.json(
+            { error: "AI room generation is rate-limited. Please retry shortly.", retryable: true },
+            { status: 429, headers: response.headers.get("retry-after") ? { "Retry-After": response.headers.get("retry-after")! } : undefined },
+          );
+        }
+        return NextResponse.json(fallbackRoomGenerationResponse(input));
       }
       if (!data) {
         const code = generationFailureCode({ invalidResponse: true });
         await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
         console.warn("room_generation_unavailable", code);
-        return NextResponse.json({ error: "AI room generation is temporarily unavailable. Try again shortly.", retryable: true }, { status: 503 });
+        return NextResponse.json(fallbackRoomGenerationResponse(input));
       }
       const result = parseGeneratedRoomDraft(groqOutputText(data), input.stageCount, input.theme);
       if (result.ok) {
@@ -175,7 +173,7 @@ export async function POST(request: NextRequest) {
       repairErrors = result.errors;
     }
     await auditGeneration(teacherId, config.model, input.stageCount, "rejected", repairErrors);
-    return NextResponse.json({ draft: fallbackGeneratedRoomDraft(input), source: "fallback", validation: "fallback" });
+    return NextResponse.json(fallbackRoomGenerationResponse(input));
   } catch {
     const code = generationFailureCode({ timedOut });
     await auditGeneration(
@@ -186,13 +184,6 @@ export async function POST(request: NextRequest) {
       [code],
     );
     console.warn("room_generation_unavailable", code);
-    return NextResponse.json(
-      {
-        error:
-          "AI room generation is temporarily unavailable. Try again shortly.",
-        retryable: true,
-      },
-      { status: 503 },
-    );
+    return NextResponse.json(fallbackRoomGenerationResponse(input));
   }
 }
