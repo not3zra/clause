@@ -17,7 +17,8 @@ describe("generated room validation", () => {
     expect(parseGeneratedRoomDraft(`Here is your draft: ${JSON.stringify(valid)} Please review it.`, 3)).toMatchObject({ ok: true });
     expect(parseGeneratedRoomDraft("{not json", 3)).toEqual({ ok: false, errors: ["The generation response was not valid JSON."] });
   });
-  it("reads either Groq response text shape", () => {
+  it("reads Groq Chat Completions and Responses API text shapes", () => {
+    expect(groqOutputText({ choices: [{ message: { content: '{"draft":true}' } }] })).toBe('{"draft":true}');
     expect(groqOutputText({ output_text: "draft" })).toBe("draft");
     expect(groqOutputText({ output: [{ content: [{ type: "output_text", text: "nested draft" }] }] })).toBe("nested draft");
     expect(groqOutputText({ output: [{ content: [{ type: "output_json", json: { draft: true } }] }] })).toBe('{"draft":true}');
@@ -34,11 +35,12 @@ describe("generated room validation", () => {
     expect(instruction).toContain("Stage 1 needs an accepted answer.");
     expect(instruction).toContain("Every stage must have a non-empty token");
   });
-  it("uses JSON Schema mode with the requested exact stage count", () => {
+  it("uses JSON Schema mode while allowing a partial draft to reach the repair loop", () => {
     expect(providerResponseFormat(3)).toMatchObject({
       type: "json_schema",
-      json_schema: { strict: true, schema: { properties: { stages: { minItems: 3, maxItems: 3 } } } },
+      json_schema: { strict: true, schema: { properties: { stages: { minItems: 1 } } } },
     });
+    expect(providerResponseFormat(3).json_schema.schema.properties.stages).not.toHaveProperty("maxItems");
   });
   it("tells free-text stages to include the required empty items array", () => {
     expect(roomGenerationSystemInstruction).toContain("items: []");
