@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { canAttachPublishedVersion } from "../../../../lib/attempt-version";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -33,17 +34,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const admin = adminClient();
     const { data: enrolment } = await admin
       .from("student_assignments")
-      .select("id")
+      .select("id, assignment:assignments!inner(published_room_version_id)")
       .eq("assignment_id", assignmentId)
       .eq("student_id", studentId)
       .maybeSingle();
     if (!enrolment) return NextResponse.json({ error: "Mission attempt not found." }, { status: 404 });
-    const { data: attempt } = await admin
+    const { data: loadedAttempt } = await admin
       .from("mission_attempts")
-      .select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results, score, elapsed_seconds")
+      .select("id, room_version_id, current_stage, recovered_tokens, completed_at, hints_used, stage_results, score, provisional_score, elapsed_seconds")
       .eq("student_assignment_id", enrolment.id)
       .maybeSingle();
-    if (!attempt) return NextResponse.json({ error: "Mission attempt not found." }, { status: 404 });
+    if (!loadedAttempt) return NextResponse.json({ error: "Mission attempt not found." }, { status: 404 });
+    const assignment = Array.isArray(enrolment.assignment) ? enrolment.assignment[0] : enrolment.assignment;
+    const publishedVersionId = assignment?.published_room_version_id;
+    let attempt = loadedAttempt;
+    if (publishedVersionId && canAttachPublishedVersion({
+      roomVersionId: attempt.room_version_id ?? null,
+      currentStage: attempt.current_stage,
+      recoveredTokens: attempt.recovered_tokens ?? [],
+      completedAt: attempt.completed_at ?? null,
+    })) {
+      const { data: repairedAttempt, error: repairError } = await admin
+        .from("mission_attempts")
+        .update({ room_version_id: publishedVersionId })
+        .eq("id", attempt.id)
+        .is("room_version_id", null)
+        .select("id, room_version_id, current_stage, recovered_tokens, completed_at, hints_used, stage_results, score, provisional_score, elapsed_seconds")
+        .maybeSingle();
+      if (repairError || !repairedAttempt) return NextResponse.json({ error: "Mission attempt could not be prepared." }, { status: 409 });
+      attempt = repairedAttempt;
+    }
     return NextResponse.json(attempt);
   } catch {
     return NextResponse.json({ error: "Mission retrieval is temporarily unavailable." }, { status: 503 });
