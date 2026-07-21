@@ -5,31 +5,23 @@ import Home from "./page";
 
 afterEach(cleanup);
 
-describe("guest sample room", () => {
-  it("shows a concise judge-demo checklist on the landing page", () => {
+describe("landing and sample mission", () => {
+  it("introduces Clause and exposes the sample mission", () => {
     render(<Home />);
 
-    expect(screen.getByText("Judge demo checklist")).toBeTruthy();
-    expect(screen.getByText("Try a wrong answer and reveal a hint.")).toBeTruthy();
-    expect(screen.getByText("Challenge a result, then inspect the dashboard.")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: /Turn grammar practice into an adventure/i }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try sample room" })).toBeTruthy();
+    expect(screen.getByText("AI-generated rooms")).toBeTruthy();
   });
 
-  it("lets a guest retry, appeal, complete every stage, and open the final lock", async () => {
+  it("lets a guest complete every stage and open the final lock", async () => {
     const user = userEvent.setup();
 
     render(<Home />);
     await user.click(screen.getByRole("button", { name: "Try sample room" }));
-
-    await user.click(screen.getByRole("button", { name: "File report" }));
-    expect(screen.getByText("Reopen the case")).toBeTruthy();
-
-    await user.click(screen.getByRole("button", { name: "Challenge this result" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "Optional explanation" }),
-      "I think my correction follows the rule.",
-    );
-    await user.click(screen.getByRole("button", { name: "Submit challenge" }));
-    expect(screen.getByText("Awaiting review")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Begin mission" }));
 
     const sentenceInput = screen.getByRole("textbox", {
       name: "Correct the sentence",
@@ -40,8 +32,9 @@ describe("guest sample room", () => {
       "The team is reviewing the witness notes before lunch.",
     );
     await user.click(screen.getByRole("button", { name: "File report" }));
+    expect(await screen.findByText("Evidence verified")).toBeTruthy();
     await user.click(
-      screen.getByRole("button", { name: "Inspect next evidence" }),
+      screen.getByRole("button", { name: "Continue to next stage" }),
     );
 
     const evidenceAnswers = [
@@ -58,8 +51,9 @@ describe("guest sample room", () => {
     }
 
     await user.click(screen.getByRole("button", { name: "Submit evidence" }));
+    expect(await screen.findByText("Evidence verified")).toBeTruthy();
     await user.click(
-      screen.getByRole("button", { name: "Inspect next evidence" }),
+      screen.getByRole("button", { name: "Continue to next stage" }),
     );
 
     const rewriteOne = screen.getByRole("textbox", {
@@ -73,6 +67,10 @@ describe("guest sample room", () => {
     await user.clear(rewriteTwo);
     await user.type(rewriteTwo, "The clues were nearby.");
     await user.click(screen.getByRole("button", { name: "Submit case file" }));
+    expect(await screen.findByText("Evidence verified")).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Continue to next stage" }),
+    );
 
     await user.click(screen.getByRole("button", { name: "CASE" }));
     await user.click(screen.getByRole("button", { name: "FILE" }));
