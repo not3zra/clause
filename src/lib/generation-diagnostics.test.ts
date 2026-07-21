@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationFailureCode, providerFailureCode } from "./generation-diagnostics";
+import { generationFailureCode, providerFailureCode, shouldRetryProviderFailure } from "./generation-diagnostics";
 
 describe("generation failure diagnostics", () => {
   it("uses safe codes without provider response details", () => {
@@ -19,5 +19,13 @@ describe("provider failure classification", () => {
     expect(providerFailureCode(400, "Invalid request parameter: input.")).toBe("provider_input_rejected");
     expect(providerFailureCode(400, "Malformed request.")).toBe("provider_http_400");
     expect(providerFailureCode(401, "Invalid API key.")).toBe("provider_http_401");
+  });
+
+  it("retries only transient generic provider failures", () => {
+    expect(shouldRetryProviderFailure(400, "provider_http_400")).toBe(true);
+    expect(shouldRetryProviderFailure(503, "provider_http_503")).toBe(true);
+    expect(shouldRetryProviderFailure(400, "provider_input_rejected")).toBe(false);
+    expect(shouldRetryProviderFailure(400, "provider_schema_rejected")).toBe(false);
+    expect(shouldRetryProviderFailure(429, "provider_http_429")).toBe(false);
   });
 });
