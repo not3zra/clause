@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   groqOutputText,
   generationRepairInstruction,
+  fallbackGeneratedRoomDraft,
   groqFailedGenerationText,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
@@ -174,14 +175,7 @@ export async function POST(request: NextRequest) {
       repairErrors = result.errors;
     }
     await auditGeneration(teacherId, config.model, input.stageCount, "rejected", repairErrors);
-    return NextResponse.json(
-      {
-        error: "Generated draft needs revision.",
-        errors: repairErrors,
-        retryable: true,
-      },
-      { status: 422 },
-    );
+    return NextResponse.json({ draft: fallbackGeneratedRoomDraft(input), source: "fallback", validation: "fallback" });
   } catch {
     const code = generationFailureCode({ timedOut });
     await auditGeneration(

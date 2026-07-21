@@ -255,6 +255,7 @@ export function TeacherPortal() {
     });
     const generatedPayload = (await generated.json()) as {
       draft?: { title: string; story: string; stages: RoomStage[] };
+      source?: "ai" | "fallback";
       error?: string;
       errors?: string[];
     };
@@ -327,7 +328,9 @@ export function TeacherPortal() {
     });
     setAssignment(null);
     setMessage(
-      "AI draft generated and validated. Review the content before validation.",
+      generatedPayload.source === "fallback"
+        ? "A validated starter draft is ready because AI content needed extra review. Edit it before validation."
+        : "AI draft generated and validated. Review the content before validation.",
     );
   };
 
@@ -401,6 +404,7 @@ export function TeacherPortal() {
     });
     const payload = (await response.json()) as {
       draft?: { title: string; story: string; stages: RoomStage[] };
+      source?: "ai" | "fallback";
       error?: string;
       errors?: string[];
     };
@@ -421,7 +425,9 @@ export function TeacherPortal() {
     );
     setRoom((current) => current ? { ...current, title: payload.draft!.title, story: payload.draft!.story } : current);
     setMessage(
-      "Replacement draft ready. Save and revalidate it before teacher review.",
+      payload.source === "fallback"
+        ? "A validated starter replacement is ready because AI content needed extra review. Save and revalidate it before teacher review."
+        : "Replacement draft ready. Save and revalidate it before teacher review.",
     );
   };
 

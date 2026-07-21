@@ -76,6 +76,50 @@ export function generationRepairInstruction(errors: string[], stageCount: number
 }
 
 export type RoomGenerationInput = { grade: number; topic: string; subtopic: string; theme: string; stageCount: 3 | 4; instructions?: string };
+
+const fallbackThemes: Record<string, { title: string; story: string; place: string; objects: string[] }> = {
+  "Detective Office": {
+    title: "The Missing Grammar File",
+    story: "Detective Mira is using evidence from a witness notebook to solve a quiet library case. Each correct grammar repair reveals the next clue.",
+    place: "detective office",
+    objects: ["clue card", "evidence file", "witness note", "case seal"],
+  },
+  "Cursed Castle": {
+    title: "The Castle Grammar Map",
+    story: "At the Cursed Castle, the librarian needs help reading a tower map, a portrait clue, and a harmless old spell before the library gate can open.",
+    place: "castle library",
+    objects: ["tower map", "portrait clue", "spell page", "library gate"],
+  },
+  "Sci-Fi Lab": {
+    title: "The Signal Station Repair",
+    story: "In the Sci-Fi Lab, a robot scientist is decoding a station signal from the orbit console before the reactor report is filed.",
+    place: "science lab",
+    objects: ["robot log", "station signal", "orbit console", "reactor report"],
+  },
+};
+
+export function fallbackGeneratedRoomDraft(input: RoomGenerationInput): GeneratedRoomDraft {
+  const theme = fallbackThemes[input.theme] ?? fallbackThemes["Detective Office"];
+  const tokens = ["CLUE", "FILE", "MAP", "SEAL"];
+  return {
+    title: `${theme.title}: ${input.topic.trim()}`,
+    story: theme.story,
+    grade: input.grade,
+    difficulty: "standard",
+    stages: Array.from({ length: input.stageCount }, (_, index) => ({
+      ordinal: index + 1,
+      title: `${theme.objects[index]} grammar check`,
+      prompt: `At the ${theme.place}, repair this note from the ${theme.objects[index]}: “The team are ready.”`,
+      rule: `Apply the ${input.topic.trim()} focus, especially ${input.subtopic.trim()}, and make the subject and verb agree.`,
+      token: tokens[index],
+      itemType: "free_text" as const,
+      acceptedAnswers: ["The team is ready."],
+      rubric: "Team is singular in this note, so it takes is.",
+      hints: ["Find the subject before choosing the verb."],
+    })),
+  };
+}
+
 export function isRoomGenerationInput(value: unknown): value is RoomGenerationInput {
   const input = value as Partial<RoomGenerationInput>;
   return Boolean(input && Number.isInteger(input.grade) && input.grade! >= 6 && input.grade! <= 9 && typeof input.topic === "string" && input.topic.trim() && typeof input.subtopic === "string" && input.subtopic.trim() && typeof input.theme === "string" && input.theme.trim() && (input.stageCount === 3 || input.stageCount === 4) && (input.instructions === undefined || (typeof input.instructions === "string" && input.instructions.length <= 500)));
