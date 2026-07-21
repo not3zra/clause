@@ -7,6 +7,7 @@ import {
   parseGeneratedRoomDraft,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
+import { generationFailureCode } from "@/lib/generation-diagnostics";
 import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedTeacher(request: NextRequest) {
@@ -75,12 +76,15 @@ export async function POST(request: NextRequest) {
   const rate = await durableRateLimit(`generation:${teacherId}`, config.perTeacherGenerationHourlyLimit, 3600);
   if (!rate.allowed) return NextResponse.json({ error: "Too many generation requests. Please retry later.", retryable: true }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
   if (!config.configured) {
+    const code = generationFailureCode({ configured: false });
     await auditGeneration(
       teacherId,
       config.model,
       input.stageCount,
       "unavailable",
+      [code],
     );
+    console.warn("room_generation_unavailable", code);
     return NextResponse.json(
       {
         error:
@@ -148,11 +152,13 @@ export async function POST(request: NextRequest) {
       },
     },
   };
+  let timedOut = false;
   try {
     let repairErrors: string[] = [];
     for (let generationAttempt = 0; generationAttempt < 2; generationAttempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25_000);
+      timedOut = false;
+      const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
       const response = await fetch("https://api.groq.com/openai/v1/responses", {
       method: "POST",
       headers: {
@@ -192,12 +198,20 @@ export async function POST(request: NextRequest) {
       signal: controller.signal,
       });
       clearTimeout(timeout);
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        await auditGeneration(teacherId, config.model, input.stageCount, "unavailable");
+        const code = generationFailureCode({ upstreamStatus: response.status });
+        await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
+        console.warn("room_generation_unavailable", code);
         const status = response.status === 429 ? 429 : 503;
         const message = response.status === 429 ? "AI room generation is rate-limited. Please retry shortly." : "AI room generation is temporarily unavailable. Try again shortly.";
         return NextResponse.json({ error: message, retryable: true }, { status, headers: response.headers.get("retry-after") ? { "Retry-After": response.headers.get("retry-after")! } : undefined });
+      }
+      if (!data) {
+        const code = generationFailureCode({ invalidResponse: true });
+        await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
+        console.warn("room_generation_unavailable", code);
+        return NextResponse.json({ error: "AI room generation is temporarily unavailable. Try again shortly.", retryable: true }, { status: 503 });
       }
       const result = parseGeneratedRoomDraft(groqOutputText(data), input.stageCount, input.theme);
       if (result.ok) {
@@ -216,12 +230,15 @@ export async function POST(request: NextRequest) {
       { status: 422 },
     );
   } catch {
+    const code = generationFailureCode({ timedOut });
     await auditGeneration(
       teacherId,
       config.model,
       input.stageCount,
       "unavailable",
+      [code],
     );
+    console.warn("room_generation_unavailable", code);
     return NextResponse.json(
       {
         error:
