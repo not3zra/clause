@@ -23,6 +23,13 @@ export async function POST(request: NextRequest) {
     const { error } = await studentSessionAdmin().from("appeals").insert({ mission_attempt_id: session.attempt.id, stage_id: body.stageId, item_attempt_id: typeof body.itemAttemptId === "string" ? body.itemAttemptId : null, student_explanation: body.explanation.trim() });
     return error ? NextResponse.json({ error: "Could not submit the appeal." }, { status: 400 }) : NextResponse.json({ ok: true }, { status: 201 });
   }
+  if (body?.action === "final-solve") {
+    if (!Array.isArray(body.selectedTokens) || body.selectedTokens.some((token) => typeof token !== "string" || token.length > 40)) return NextResponse.json({ error: "Invalid final clue sequence." }, { status: 400 });
+    const { data, error } = await studentSessionAdmin().rpc("solve_session_mission_final_clue", {
+      p_session_hash: hashOpaqueToken(token), p_attempt_id: session.attempt.id, p_selected_tokens: body.selectedTokens,
+    });
+    return error ? NextResponse.json({ error: error.message === "The clues are not in the right sequence" ? error.message : "Could not save the final solution." }, { status: 400 }) : NextResponse.json({ attempt: data });
+  }
   if (!body || typeof body.stageId !== "string" || typeof body.verdict !== "string" || typeof body.source !== "string" || typeof body.idempotencyKey !== "string") return NextResponse.json({ error: "Invalid mission submission." }, { status: 400 });
   const { data, error } = await studentSessionAdmin().rpc("submit_session_mission_item", {
     p_session_hash: hashOpaqueToken(token), p_attempt_id: session.attempt.id, p_stage_id: body.stageId,

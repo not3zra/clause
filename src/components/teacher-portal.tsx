@@ -14,6 +14,7 @@ type TeacherClass = { id: string; name: string; grade: number };
 type Room = {
   id: string;
   title: string;
+  story?: string;
   status: "draft" | "published" | "closed";
   reviewed_at: string | null;
   validated_at: string | null;
@@ -204,7 +205,7 @@ export function TeacherPortal() {
         theme: result.value.theme,
         stage_count: result.value.stageCount,
       })
-      .select("id, title, status, reviewed_at, validated_at")
+      .select("id, title, story, status, reviewed_at, validated_at")
       .single();
     setBusy(false);
     if (error) {
@@ -241,7 +242,7 @@ export function TeacherPortal() {
       }),
     });
     const generatedPayload = (await generated.json()) as {
-      draft?: { title: string; stages: RoomStage[] };
+      draft?: { title: string; story: string; stages: RoomStage[] };
       error?: string;
       errors?: string[];
     };
@@ -256,7 +257,7 @@ export function TeacherPortal() {
     const stages = generatedPayload.draft.stages;
     await supabase
       .from("rooms")
-      .update({ title: generatedPayload.draft.title })
+      .update({ title: generatedPayload.draft.title, story: generatedPayload.draft.story })
       .eq("id", data.id);
     const { data: savedStages, error: stagesError } = await supabase
       .from("room_stages")
@@ -309,6 +310,7 @@ export function TeacherPortal() {
     setRoom({
       ...(data as Room),
       title: generatedPayload.draft.title,
+      story: generatedPayload.draft.story,
       versionId: version.id,
     });
     setAssignment(null);
@@ -345,7 +347,7 @@ export function TeacherPortal() {
     if (!error) {
       const { data, error: roomError } = await supabase
         .from("rooms")
-        .update({ reviewed_at: null, validated_at: null })
+        .update({ title: room.title, story: room.story ?? "", reviewed_at: null, validated_at: null })
         .eq("id", room.id)
         .select("id, title, status, reviewed_at, validated_at")
         .single();
@@ -386,7 +388,7 @@ export function TeacherPortal() {
       }),
     });
     const payload = (await response.json()) as {
-      draft?: { stages: RoomStage[] };
+      draft?: { title: string; story: string; stages: RoomStage[] };
       error?: string;
       errors?: string[];
     };
@@ -405,6 +407,7 @@ export function TeacherPortal() {
         id: draftStages.find((item) => item.ordinal === stage.ordinal)?.id,
       })),
     );
+    setRoom((current) => current ? { ...current, title: payload.draft!.title, story: payload.draft!.story } : current);
     setMessage(
       "Replacement draft ready. Save and revalidate it before teacher review.",
     );
