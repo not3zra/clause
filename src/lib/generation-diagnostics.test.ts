@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationFailureCode, providerFailureCode, shouldRetryProviderFailure } from "./generation-diagnostics";
+import { generationFailureCode, providerFailureCode, providerFailureDetails, shouldRetryProviderFailure } from "./generation-diagnostics";
 
 describe("generation failure diagnostics", () => {
   it("uses safe codes without provider response details", () => {
@@ -27,5 +27,10 @@ describe("provider failure classification", () => {
     expect(shouldRetryProviderFailure(400, "provider_input_rejected")).toBe(false);
     expect(shouldRetryProviderFailure(400, "provider_schema_rejected")).toBe(false);
     expect(shouldRetryProviderFailure(429, "provider_http_429")).toBe(false);
+  });
+
+  it("keeps provider diagnostics safe while preserving actionable categories", () => {
+    expect(providerFailureDetails({ error: { type: "invalid_request_error", code: "bad_request", message: "Request rejected because the account has exhausted its daily token quota." } })).toEqual({ type: "invalid_request_error", code: "bad_request", category: "quota_or_billing" });
+    expect(providerFailureDetails({ error: { type: "unsafe value", code: "contains spaces", message: "Invalid request parameter: input." } })).toEqual({ category: "request_format" });
   });
 });

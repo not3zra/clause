@@ -11,7 +11,7 @@ import {
   roomGenerationSystemInstruction,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
-import { generationFailureCode, providerFailureCode, shouldRetryProviderFailure } from "@/lib/generation-diagnostics";
+import { generationFailureCode, providerFailureCode, providerFailureDetails, shouldRetryProviderFailure } from "@/lib/generation-diagnostics";
 import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedTeacher(request: NextRequest) {
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
         const code = providerFailureCode(response.status, providerMessage);
         if (generationAttempt === 0 && shouldRetryProviderFailure(response.status, code)) continue;
         await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
-        console.warn("room_generation_unavailable", code);
+        console.warn("room_generation_unavailable", JSON.stringify({ code, ...providerFailureDetails(data) }));
         if (response.status === 429) {
           return NextResponse.json(
             { error: "AI room generation is rate-limited. Please retry shortly.", retryable: true },
