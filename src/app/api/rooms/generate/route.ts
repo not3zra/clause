@@ -7,7 +7,7 @@ import {
   parseGeneratedRoomDraft,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
-import { generationFailureCode } from "@/lib/generation-diagnostics";
+import { generationFailureCode, providerFailureCode } from "@/lib/generation-diagnostics";
 import { durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 async function authenticatedTeacher(request: NextRequest) {
@@ -200,7 +200,10 @@ export async function POST(request: NextRequest) {
       clearTimeout(timeout);
       const data = await response.json().catch(() => null);
       if (!response.ok) {
-        const code = generationFailureCode({ upstreamStatus: response.status });
+        const providerMessage = typeof (data as { error?: { message?: unknown } } | null)?.error?.message === "string"
+          ? (data as { error: { message: string } }).error.message
+          : undefined;
+        const code = providerFailureCode(response.status, providerMessage);
         await auditGeneration(teacherId, config.model, input.stageCount, "unavailable", [code]);
         console.warn("room_generation_unavailable", code);
         const status = response.status === 429 ? 429 : 503;

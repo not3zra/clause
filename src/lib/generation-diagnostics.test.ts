@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationFailureCode } from "./generation-diagnostics";
+import { generationFailureCode, providerFailureCode } from "./generation-diagnostics";
 
 describe("generation failure diagnostics", () => {
   it("uses safe codes without provider response details", () => {
@@ -9,5 +9,15 @@ describe("generation failure diagnostics", () => {
     expect(generationFailureCode({ timedOut: true })).toBe("provider_timeout");
     expect(generationFailureCode({ invalidResponse: true })).toBe("provider_invalid_response");
     expect(generationFailureCode({})).toBe("provider_request_failed");
+  });
+});
+
+describe("provider failure classification", () => {
+  it("classifies safe 400 categories without retaining the response message", () => {
+    expect(providerFailureCode(400, "The response_format JSON schema is unsupported.")).toBe("provider_schema_rejected");
+    expect(providerFailureCode(400, "The requested model is not supported.")).toBe("provider_model_rejected");
+    expect(providerFailureCode(400, "Invalid request parameter: input.")).toBe("provider_input_rejected");
+    expect(providerFailureCode(400, "Malformed request.")).toBe("provider_http_400");
+    expect(providerFailureCode(401, "Invalid API key.")).toBe("provider_http_401");
   });
 });
