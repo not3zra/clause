@@ -68,11 +68,15 @@ export default function Home() {
   const [view, setView] = useState<View>("landing");
   const [wizardStep, setWizardStep] = useState(1);
   const [theme, setTheme] = useState(themes[0].name);
-  const [darkMode, setDarkMode] = useState(() => typeof window !== "undefined" && window.localStorage.getItem("clause-color-mode") === "dark");
-  const toggleDarkMode = () => setDarkMode((enabled) => { const next = !enabled; window.localStorage.setItem("clause-color-mode", next ? "dark" : "light"); return next; });
+  const [darkMode, setDarkMode] = useState(false);
+  const toggleDarkMode = () => setDarkMode((v) => !v);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("app-dark", darkMode);
+  }, [darkMode]);
 
   return (
-    <main className={`app-shell min-h-screen ${darkMode ? "app-dark" : ""}`}>
+    <main className="min-h-screen">
       <Header darkMode={darkMode} onHome={() => setView("landing")} onTeacher={() => setView("teacher")} onToggleTheme={toggleDarkMode} />
       {view === "landing" && <Landing onCreate={() => setView("teacher")} onSample={() => setView("missions")} />}
       {view === "teacher" && <TeacherPortal />}
@@ -85,10 +89,10 @@ export default function Home() {
 
 function Header({ darkMode, onHome, onTeacher, onToggleTheme, themeClass }: { darkMode: boolean; onHome: () => void; onTeacher: () => void; onToggleTheme: () => void; themeClass?: string }) {
   return <><header className={`site-header${themeClass ? ` theme-${themeClass}` : ""}`}><div className="site-header-inner">
-    <button className="site-logo" onClick={onHome} type="button"><span className="site-logo-mark">C</span><span>CLAUSE</span></button>
+    <button className="site-logo" onClick={onHome} type="button"><span className="site-logo-mark">C</span><span className="site-logo-text"><strong>CLAUSE</strong><small>Grammar missions</small></span></button>
     <nav className="site-nav"><button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} type="button">How it works</button><button onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })} type="button">Features</button><button onClick={onTeacher} type="button">For teachers</button><button onClick={() => document.getElementById("sample-room")?.scrollIntoView({ behavior: "smooth" })} type="button">Sample room</button></nav>
     <div className="site-actions"><button aria-label={darkMode ? "Use light mode" : "Use dark mode"} className="theme-btn" onClick={onToggleTheme} title={darkMode ? "Use light mode" : "Use dark mode"} type="button">{darkMode ? <Sun size={16} /> : <Moon size={16} />}</button><button className="btn btn-ghost btn-sm" onClick={onTeacher} type="button">Sign in</button><button className="btn btn-primary btn-sm" onClick={onTeacher} type="button">Create a room</button></div>
-  </div></header><nav className="mobile-nav"><button onClick={onHome} type="button">Home</button><button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} type="button">How it works</button><button onClick={onTeacher} type="button">Teachers</button><button onClick={onToggleTheme} type="button">{darkMode ? <Sun size={14} /> : <Moon size={14} />}</button></nav></>;
+  </div></header><nav className="mobile-nav"><button onClick={onHome} type="button">Home</button><button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} type="button">How it works</button><button onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })} type="button">Features</button><button onClick={onTeacher} type="button">For teachers</button><button onClick={() => document.getElementById("sample-room")?.scrollIntoView({ behavior: "smooth" })} type="button">Sample room</button><button onClick={onToggleTheme} type="button">{darkMode ? <Sun size={14} /> : <Moon size={14} />}</button></nav></>;
 }
 
 function useScrollReveal() {
@@ -158,32 +162,22 @@ function useCardTilt() {
 }
 
 function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () => void }) {
+  useScrollReveal();
   return <>
-    <section className="landing-hero" id="sample-room">
-      <div className="landing-content">
-        <p className="agency-chip">AI grammar escape rooms</p>
-        <h1>Turn grammar practice into an <span>adventure.</span></h1>
-        <p className="landing-lede">Create teacher-reviewed grammar rooms in minutes. Students solve, reflect, and build confidence while you see exactly where to help next.</p>
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row"><button className="primary-action landing-action flex-1" onClick={onCreate} type="button">Create a room <span aria-hidden="true">&#8594;</span></button><button className="secondary-action landing-action flex-1" onClick={onSample} type="button">Try sample room</button></div>
-        <aside aria-label="Judge demo checklist" className="mt-5 border-l-2 border-[#8edbd5] pl-3 text-sm text-[#52677f]"><strong className="block text-[#0f766e]">Judge demo checklist</strong><span>Try a wrong answer and reveal a hint.</span><span className="mx-2" aria-hidden="true">·</span><span>Challenge a result, then inspect the dashboard.</span></aside>
+    <section className="hero" id="sample-room">
+      <div className="hero-grid" />
+      <div className="hero-floating-shapes">
+        <div className="hero-shape s1" />
+        <div className="hero-shape s2" />
+        <div className="hero-shape s3" />
+        <div className="hero-shape s4" />
       </div>
-      <div className="hero-showcase" data-in=".5">
-        <div className="hero-showcase-card">
-          <div className="hero-showcase-header">
-            <div className="hero-showcase-dot r" />
-            <div className="hero-showcase-dot y" />
-            <div className="hero-showcase-dot g" />
-          </div>
-          <div className="hero-showcase-body">
-            <div className="hero-showcase-line w" />
-            <div className="hero-showcase-line s" />
-            <div className="hero-showcase-line w" style={{ width: "65%" }} />
-            <div className="hero-showcase-grid">
-              <div className="hero-showcase-block" />
-              <div className="hero-showcase-block" />
-              <div className="hero-showcase-block" />
-            </div>
-          </div>
+      <div className="hero-inner">
+        <h1>Turn grammar practice into an <em>adventure.</em></h1>
+        <p>Create teacher-reviewed grammar rooms in minutes. Students solve, reflect, and build confidence while you see exactly where to help next.</p>
+        <div className="hero-actions">
+          <button className="btn btn-primary" onClick={onCreate} type="button">Create a room <span aria-hidden="true">&rarr;</span></button>
+          <button className="btn btn-secondary" onClick={onSample} type="button">Try sample room</button>
         </div>
       </div>
     </section>
@@ -235,7 +229,7 @@ function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () =>
         </div>
       </div>
     </section>
-    <footer className="site-footer"><div className="footer-inner"><div className="footer-brand"><span>C</span>Clause</div><nav className="footer-nav"><a href="#how-it-works">How it works</a><a href="#features">Features</a><a href="#sample-room">Try a room</a><button className="btn-ghost btn-sm" onClick={onCreate} type="button">For teachers</button></nav><span className="footer-copy">&copy; 2026 Clause. Grammar, made visible.</span></div></footer>
+    <footer className="site-footer"><div className="footer-inner"><div className="footer-brand"><span className="footer-brand-mark">C</span><span className="footer-brand-text"><strong>CLAUSE</strong><small>Grammar missions</small></span></div><nav className="footer-nav"><a href="#how-it-works">How it works</a><a href="#features">Features</a><a href="#sample-room">Try a room</a><button className="btn-ghost btn-sm" onClick={onCreate} type="button">For teachers</button></nav><span className="footer-copy">&copy; 2026 Clause. Grammar, made visible.</span></div></footer>
   </>;
 }
 
@@ -257,7 +251,7 @@ function TeacherWizard({ step, setStep, theme, setTheme, onPreview }: { step: nu
   const next = () => setStep(Math.min(5, step + 1));
   const previous = () => setStep(Math.max(1, step - 1));
 
-  return <section className="mx-auto max-w-[1080px] px-5 py-8">
+  return <section className="teacher-section">
     <div className="mb-8 flex flex-wrap gap-2">{["Learning setup", "Theme", "Generate", "Review", "Publish"].map((label, index) => <button className={stepButton(step === index + 1, step > index + 1)} key={label} onClick={() => setStep(index + 1)} type="button"><span>{index + 1}</span>{label}</button>)}</div>
     <div className="panel">
       {step === 1 && <><PanelTitle eyebrow="Step 1" title="Learning setup" text="Set the class context before generating a room." /><div className="mt-7 grid gap-5 sm:grid-cols-2"><Field label="Class"><select className="input-shell" defaultValue="7B Grammar Lab"><option>7B Grammar Lab</option><option>6A Language Arts</option></select></Field><Field label="Grade"><select className="input-shell" defaultValue="Grade 7"><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option></select></Field><Field label="Topic"><select className="input-shell"><option>Subject-verb agreement</option><option>Verb tense</option><option>Parts of speech</option></select></Field><Field label="Subtopic"><select className="input-shell"><option>Collective and compound subjects</option><option>Nearby noun distractors</option></select></Field></div><Field label="Stage count"><div className="mt-2 flex gap-2"><button className="choice active" type="button">3 stages</button><button className="choice" type="button">4 stages</button></div></Field></>}
@@ -339,7 +333,7 @@ function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () 
   );
 
   if (phase === "success") return (
-    <div className="success">
+    <div className={`success theme-${themeClass}`}>
       <div className="confetti-container">
         {Array.from({ length: 10 }).map((_, i) => <div className="confetti-piece" key={i} />)}
       </div>
@@ -549,9 +543,9 @@ function FinalLock({ tokens, lockInput, setLockInput, onUnlock }: { tokens: stri
 
 function SuccessScreen({ onDashboard }: { onDashboard: () => void }) { return <section className="mx-auto max-w-xl px-5 py-16"><div className="panel text-center"><span className="grid mx-auto h-12 w-12 place-items-center rounded-full bg-[#e8f6ee] font-black text-[#1d704f]">OK</span><p className="eyebrow mt-5">Mission complete</p><h1 className="mt-2 text-3xl font-black">Case closed.</h1><p className="mt-3 text-[#667085]">You recovered every token and opened the cabinet.</p><div className="mt-7 flex flex-wrap justify-center gap-3"><button className="primary-action" onClick={onDashboard} type="button">View results</button><button className="secondary-action" type="button">Back to My Missions</button><button className="ghost-action" type="button">Try Extra Case</button></div></div></section>; }
 
-function Dashboard() { const [expanded, setExpanded] = useState<string | null>(null); const [insight, setInsight] = useState(false); const [appealsOnly, setAppealsOnly] = useState(false); const rows = appealsOnly ? studentRows.filter((row) => row.appeal !== "None") : studentRows; return <section className="mx-auto max-w-[1080px] px-5 py-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">Class overview</p><h1 className="mt-2 text-2xl font-black">7B Grammar Lab</h1><p className="mt-1 text-sm text-[#667085]">The Missing Verb File | Subject-verb agreement</p></div><div className="flex gap-2"><button className="secondary-action" onClick={() => setAppealsOnly(!appealsOnly)} type="button">{appealsOnly ? "Show all" : "2 appeals pending"}</button><button className="primary-action" onClick={() => setInsight(true)} type="button">Get class insight</button></div></div>{insight && <div className="mt-6 rounded-md border border-[#b8e5de] bg-[#e6fffa] p-4 text-sm leading-6 text-[#0f766e]"><strong>Class insight:</strong> Most students secure collective-noun agreement, while nearby distractors and neither/nor structures need a short reteach before the next mission.</div>}<div className="mt-6 grid gap-4 sm:grid-cols-4"><Metric label="Completion" value="86%" /><Metric label="First attempt" value="68%" /><Metric label="Hints used" value="14" /><Metric label="Appeals" value="2" /></div><div className="mt-6 overflow-hidden rounded-md border border-[#e8e2d7] bg-white">{rows.map((row) => <div className="border-b border-[#e8e2d7] last:border-0" key={row.name}><button className="grid w-full gap-3 px-4 py-4 text-left text-sm sm:grid-cols-[1.3fr_0.7fr_0.55fr_0.7fr_0.7fr]" onClick={() => setExpanded(expanded === row.name ? null : row.name)} type="button"><span><strong className="block">{row.name}</strong><small>{row.roll}</small></span><span>{row.status}</span><span className="font-black">{row.score}</span><span><span className="status-icon">{row.mastery === "Secure" ? "OK" : "!"}</span>{row.mastery}</span><span>{row.appeal}</span></button>{expanded === row.name && <div className="border-t border-[#e8e2d7] bg-[#f8fafc] px-4 py-4 text-sm text-[#667085]"><strong className="text-[#172235]">Attempt detail: </strong>{row.detail}<div className="mt-3 flex gap-2"><button className="secondary-action" type="button">Open item detail</button>{row.appeal !== "None" && <button className="secondary-action" type="button">Review appeal</button>}</div></div>}</div>)}</div></section>; }
+function Dashboard() { const [expanded, setExpanded] = useState<string | null>(null); const [insight, setInsight] = useState(false); const [appealsOnly, setAppealsOnly] = useState(false); const rows = appealsOnly ? studentRows.filter((row) => row.appeal !== "None") : studentRows; return <section className="teacher-section"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">Class overview</p><h1 className="mt-2 text-2xl font-black">7B Grammar Lab</h1><p className="mt-1 text-sm text-[#667085]">The Missing Verb File | Subject-verb agreement</p></div><div className="flex gap-2"><button className="secondary-action" onClick={() => setAppealsOnly(!appealsOnly)} type="button">{appealsOnly ? "Show all" : "2 appeals pending"}</button><button className="primary-action" onClick={() => setInsight(true)} type="button">Get class insight</button></div></div>{insight && <div className="insight-box" style={{ marginTop: 24 }}><strong>Class insight:</strong> Most students secure collective-noun agreement, while nearby distractors and neither/nor structures need a short reteach before the next mission.</div>}<div className="metric-grid" style={{ marginTop: 24 }}><Metric label="Completion" value="86%" /><Metric label="First attempt" value="68%" /><Metric label="Hints used" value="14" /><Metric label="Appeals" value="2" /></div><div className="panel" style={{ marginTop: 24, padding: 0, overflow: "hidden" }}>{rows.map((row) => <div className="border-b border-[#e8e2d7] last:border-0" key={row.name}><button className="grid w-full gap-3 px-4 py-4 text-left text-sm sm:grid-cols-[1.3fr_0.7fr_0.55fr_0.7fr_0.7fr]" onClick={() => setExpanded(expanded === row.name ? null : row.name)} type="button"><span><strong className="block">{row.name}</strong><small>{row.roll}</small></span><span>{row.status}</span><span className="font-black">{row.score}</span><span><span className="status-icon">{row.mastery === "Secure" ? "OK" : "!"}</span>{row.mastery}</span><span>{row.appeal}</span></button>{expanded === row.name && <div className="border-t border-[#e8e2d7] bg-[#f8fafc] px-4 py-4 text-sm text-[#667085]"><strong className="text-[#172235]">Attempt detail: </strong>{row.detail}<div className="mt-3 flex gap-2"><button className="secondary-action" type="button">Open item detail</button>{row.appeal !== "None" && <button className="secondary-action" type="button">Review appeal</button>}</div></div>}</div>)}</div></section>; }
 
-function PanelTitle({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) { return <div><p className="eyebrow">{eyebrow}</p><h1 className="mt-2 text-2xl font-black">{title}</h1><p className="mt-2 max-w-2xl text-[#667085]">{text}</p></div>; }
-function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="mt-5 block text-sm font-bold text-[#2c3a4e]"><span>{label}</span>{children}</label>; }
-function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-md border border-[#e8e2d7] bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#657286]">{label}</p><p className="mt-2 text-2xl font-black">{value}</p></div>; }
+function PanelTitle({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) { return <div><p className="eyebrow">{eyebrow}</p><h1 className="text-2xl font-black" style={{ marginTop: 8 }}>{title}</h1><p className="max-w-2xl" style={{ marginTop: 8, color: "var(--text-secondary)" }}>{text}</p></div>; }
+function Field({ children, label }: { children: ReactNode; label: string }) { return <label className="field-label" style={{ marginTop: 20 }}><span>{label}</span>{children}</label>; }
+function Metric({ label, value }: { label: string; value: string }) { return <div className="metric-card"><p className="metric-label">{label}</p><p className="metric-value">{value}</p></div>; }
 function stepButton(active: boolean, complete: boolean) { return `step-button ${active ? "step-active" : ""} ${complete ? "step-complete" : ""}`; }
