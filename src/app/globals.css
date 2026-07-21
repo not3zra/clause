@@ -648,7 +648,47 @@ select.input-shell { appearance: none; background-image: url("data:image/svg+xml
   50% { opacity: 0.8; }
 }
 
-/* ===== ANIMATIONS ===== */
+/* ===== THEMED LOADERS ===== */
+
+.loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 48px 24px; text-align: center; }
+.loader-ring { width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--theme-border, var(--border)); border-top-color: var(--theme-accent, var(--accent)); animation: loaderSpin .7s linear infinite; position: relative; }
+.loader-ring::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid transparent; border-bottom-color: var(--theme-glow, var(--primary-glow)); animation: loaderSpin 1s linear infinite reverse; opacity: .5; }
+.loader-icon { font-size: 36px; line-height: 1; margin-bottom: -4px; }
+.loader-text { font-size: 15px; font-weight: 700; color: var(--theme-t2, var(--text-secondary)); font-family: var(--font-sans); animation: loaderPulse 1.4s ease-in-out infinite; }
+.loader-sub { font-size: 12px; color: var(--text-muted); font-family: var(--font-sans); margin-top: -8px; }
+
+/* Detective loader */
+.loader-detective .loader-ring { border-top-color: var(--theme-accent, oklch(0.50 0.26 55)); }
+.loader-detective .loader-ring::after { border-bottom-color: var(--theme-glow, oklch(0.50 0.20 55 / 0.3)); }
+.loader-detective .loader-text { color: var(--theme-t2, oklch(0.40 0.025 50)); }
+
+/* Castle loader */
+.loader-castle .loader-ring { border-top-color: var(--theme-accent, oklch(0.45 0.26 290)); }
+.loader-castle .loader-ring::after { border-bottom-color: var(--theme-glow, oklch(0.50 0.22 290 / 0.3)); }
+.loader-castle .loader-text { color: var(--theme-t2, oklch(0.38 0.03 280)); }
+
+/* Scifi loader */
+.loader-scifi .loader-ring { border-top-color: var(--theme-accent, oklch(0.52 0.20 210)); }
+.loader-scifi .loader-ring::after { border-bottom-color: var(--theme-glow, oklch(0.58 0.16 210 / 0.3)); }
+.loader-scifi .loader-text { color: var(--theme-t2, oklch(0.38 0.02 230)); }
+
+/* Inline loader (inside buttons, small) */
+.loader-inline { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-sans); }
+.loader-inline .loader-ring { width: 18px; height: 18px; border-width: 2px; flex-shrink: 0; }
+.loader-inline .loader-ring::after { display: none; }
+
+/* Loader overlay (covers game-main while checking) */
+.loader-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--theme-surface, var(--surface)); border-radius: inherit; z-index: 10; animation: loaderFadeIn .2s ease; }
+.loader-overlay .loader { gap: 14px; padding: 32px; }
+
+/* Overlay variants per theme */
+.theme-detective .loader-overlay { background: var(--theme-surface); }
+.theme-castle .loader-overlay { background: var(--theme-surface); }
+.theme-scifi .loader-overlay { background: var(--theme-surface); }
+
+@keyframes loaderSpin { to { transform: rotate(360deg); } }
+@keyframes loaderPulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+@keyframes loaderFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* ===== ANIMATIONS ===== */
 

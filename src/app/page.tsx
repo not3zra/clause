@@ -241,8 +241,14 @@ function HowStep({ kind, number, title, text }: { kind: "setup" | "generate" | "
   return <article className="how-step"><span aria-label={`Step ${number}`} className={`step-icon step-${kind}`} role="img" /><h3>{title}</h3><p>{text}</p></article>;
 }
 
+function Loader({ themeClass, label, sub }: { themeClass: string; label: string; sub?: string }) {
+  const icon = themeClass === "castle" ? "🏰" : themeClass === "scifi" ? "🚀" : "🕵️";
+  return <div className={`loader loader-${themeClass}`} role="status"><span className="loader-icon">{icon}</span><div className="loader-ring" /><span className="loader-text">{label}</span>{sub ? <span className="loader-sub">{sub}</span> : null}</div>;
+}
+
 function TeacherWizard({ step, setStep, theme, setTheme, onPreview }: { step: number; setStep: (step: number) => void; theme: string; setTheme: (theme: string) => void; onPreview: () => void }) {
   const [generated, setGenerated] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [selectedStage, setSelectedStage] = useState<StageId>("surgery");
   const [instruction, setInstruction] = useState("");
   const [adaptive, setAdaptive] = useState(false);
@@ -250,13 +256,16 @@ function TeacherWizard({ step, setStep, theme, setTheme, onPreview }: { step: nu
   const selected = stages.find((item) => item.id === selectedStage) ?? stages[0];
   const next = () => setStep(Math.min(5, step + 1));
   const previous = () => setStep(Math.max(1, step - 1));
+  const themeClass = themes.find((t) => t.name === theme)?.cssClass ?? "detective";
+  const wizardLabel = themeClass === "castle" ? "Consulting ancient tomes..." : themeClass === "scifi" ? "Processing data streams..." : "Searching case files...";
+  const wizardSub = themeClass === "castle" ? "Unearthing grammar wisdom" : themeClass === "scifi" ? "Assembling mission parameters" : "Compiling evidence and clues";
 
   return <section className="teacher-section">
     <div className="mb-8 flex flex-wrap gap-2">{["Learning setup", "Theme", "Generate", "Review", "Publish"].map((label, index) => <button className={stepButton(step === index + 1, step > index + 1)} key={label} onClick={() => setStep(index + 1)} type="button"><span>{index + 1}</span>{label}</button>)}</div>
     <div className="panel">
       {step === 1 && <><PanelTitle eyebrow="Step 1" title="Learning setup" text="Set the class context before generating a room." /><div className="mt-7 grid gap-5 sm:grid-cols-2"><Field label="Class"><select className="input-shell" defaultValue="7B Grammar Lab"><option>7B Grammar Lab</option><option>6A Language Arts</option></select></Field><Field label="Grade"><select className="input-shell" defaultValue="Grade 7"><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option></select></Field><Field label="Topic"><select className="input-shell"><option>Subject-verb agreement</option><option>Verb tense</option><option>Parts of speech</option></select></Field><Field label="Subtopic"><select className="input-shell"><option>Collective and compound subjects</option><option>Nearby noun distractors</option></select></Field></div><Field label="Stage count"><div className="mt-2 flex gap-2"><button className="choice active" type="button">3 stages</button><button className="choice" type="button">4 stages</button></div></Field></>}
       {step === 2 && <><PanelTitle eyebrow="Step 2" title="Choose a theme" text="The shared mission components stay the same; only the tone and accents change." /><div className="mt-7 grid gap-4 md:grid-cols-3">{themes.map((item) => <button className={`theme-card ${theme === item.name ? "theme-selected" : ""}`} key={item.name} onClick={() => setTheme(item.name)} type="button"><span className="text-xs font-black text-[#0f766e]">{item.accent || "Theme"}</span><span className="mt-2 block text-lg font-black">{item.name}</span><span className="mt-2 block text-sm leading-6 text-[#667085]">{item.note}</span></button>)}</div></>}
-      {step === 3 && <><PanelTitle eyebrow="Step 3" title="Generate room" text="The teacher remains in control of when a draft is created." /><Field label="Optional instruction"><textarea className="input-shell mt-2 min-h-28" maxLength={250} onChange={(event) => setInstruction(event.target.value)} placeholder="For example: include a cricket-club context." value={instruction} /><span className="mt-1 block text-right text-xs text-[#657286]">{instruction.length}/250</span></Field><label className="mt-5 flex items-start gap-3 rounded-md border border-[#e8e2d7] p-4"><input checked={adaptive} className="mt-1 h-4 w-4" onChange={(event) => setAdaptive(event.target.checked)} type="checkbox" /><span><span className="block font-black">Adaptive Extra Case</span><span className="mt-1 block text-sm text-[#667085]">Offer an optional extension after the final lock.</span></span></label><button className="primary-action mt-6" onClick={() => { setGenerated(true); setStep(4); }} type="button">{generated ? "Regenerate room" : "Generate room"}</button></>}
+      {step === 3 && <>{generating ? <Loader themeClass={themeClass} label={wizardLabel} sub={wizardSub} /> : <><PanelTitle eyebrow="Step 3" title="Generate room" text="The teacher remains in control of when a draft is created." /><Field label="Optional instruction"><textarea className="input-shell mt-2 min-h-28" maxLength={250} onChange={(event) => setInstruction(event.target.value)} placeholder="For example: include a cricket-club context." value={instruction} /><span className="mt-1 block text-right text-xs text-[#657286]">{instruction.length}/250</span></Field><label className="mt-5 flex items-start gap-3 rounded-md border border-[#e8e2d7] p-4"><input checked={adaptive} className="mt-1 h-4 w-4" onChange={(event) => setAdaptive(event.target.checked)} type="checkbox" /><span><span className="block font-black">Adaptive Extra Case</span><span className="mt-1 block text-sm text-[#667085]">Offer an optional extension after the final lock.</span></span></label><button className="primary-action mt-6" onClick={() => { setGenerating(true); setTimeout(() => { setGenerating(false); setGenerated(true); setStep(4); }, 2000); }} type="button">{generated ? "Regenerate room" : "Generate room"}</button></>}</>}
       {step === 4 && <div className="grid gap-6 lg:grid-cols-[280px_1fr]"><aside><p className="eyebrow">Step 4</p><h2 className="mt-2 text-2xl font-black">Review and validate</h2><div className="mt-5 space-y-2">{stages.map((item) => <button className={`stage-list ${selectedStage === item.id ? "stage-selected" : ""}`} key={item.id} onClick={() => setSelectedStage(item.id)} type="button"><span className="status-dot status-ok">OK</span><span><strong>{item.title}</strong><small>All checks passed</small></span></button>)}</div></aside><div className="rounded-md border border-[#e8e2d7] p-5"><p className="eyebrow">Selected stage</p><h3 className="mt-2 text-xl font-black">{selected.title}</h3><Field label="Question text"><textarea className="input-shell mt-2 min-h-28" defaultValue={selected.prompt} /></Field><Field label="Clue token"><input className="input-shell mt-2" defaultValue={selected.token} /></Field><div className="mt-5 flex flex-wrap gap-2"><button className="secondary-action" type="button">Edit</button><button className="secondary-action" type="button">Regenerate</button><button className="secondary-action" onClick={onPreview} type="button">Test answer</button><button className="secondary-action" type="button">Duplicate room</button></div><div className="mt-6 rounded-md bg-[#eff8f3] p-4 text-sm text-[#245c45]"><strong>Validation checklist: </strong>grammar correctness, safety, grade fit, answer key, ambiguity, and story consistency are clear.</div></div></div>}
       {step === 5 && <><PanelTitle eyebrow="Step 5" title="Publish room" text="Confirm the review and choose how your class will enter the mission." /><label className="mt-6 flex gap-3 rounded-md border border-[#e8e2d7] p-4"><input className="mt-1 h-4 w-4" type="checkbox" /><span><strong>I reviewed the generated content.</strong><span className="mt-1 block text-sm text-[#667085]">Publishing is enabled after teacher review.</span></span></label><label className="mt-4 flex items-center justify-between rounded-md border border-[#e8e2d7] p-4"><span><strong>Show marks to students</strong><span className="mt-1 block text-sm text-[#667085]">Hidden by default.</span></span><input checked={marksVisible} onChange={(event) => setMarksVisible(event.target.checked)} type="checkbox" /></label><div className="mt-6 flex flex-wrap gap-3"><button className="primary-action" type="button">Copy home invite link</button><button className="secondary-action" type="button">Launch presentation mode</button></div></>}
       <div className="mt-8 flex justify-between border-t border-[#e8e2d7] pt-5"><button className="ghost-action" disabled={step === 1} onClick={previous} type="button">Back</button>{step < 5 && <button className="primary-action" onClick={next} type="button">Continue</button>}</div>
@@ -279,11 +288,14 @@ function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () 
   const [appealSubmitted, setAppealSubmitted] = useState(false);
   const [lockInput, setLockInput] = useState<string[]>([]);
   const [tokenPop, setTokenPop] = useState<StageId | null>(null);
+  const [checking, setChecking] = useState<StageId | null>(null);
 
   const sortedCount = useMemo(() => evidenceCards.filter((card) => sortState[card.sentence] === card.answer).length, [sortState]);
   const current = stages[stageIndex];
   const themeClass = themes.find((t) => t.name === theme)?.cssClass ?? "detective";
   const currentTheme = themes.find((t) => t.name === theme) ?? themes[0];
+  const checkLabel = checking ? (themeClass === "castle" ? "Examining ancient texts..." : themeClass === "scifi" ? "Running diagnostics..." : "Analyzing evidence...") : "";
+  const checkSub = checking ? (themeClass === "castle" ? "Cross-referencing grammar runes" : themeClass === "scifi" ? "Scanning syntax patterns" : "Comparing against case files") : "";
 
   useEffect(() => { const timer = window.setInterval(() => setSeconds((v) => Math.max(0, v - 1)), 1000); return () => window.clearInterval(timer); }, []);
 
@@ -292,12 +304,19 @@ function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () 
     setTimeout(() => { setTokenPop(null); }, 500);
     setCompleted((items) => items.includes(id) ? items : [...items, id]);
     setVerdict("correct");
+    setChecking(null);
   };
   const markWrong = () => setAttempts((count) => { const next = count + 1; if (next >= 3) setAnswerRevealed(true); return next; });
-  // Accept the target repair with surrounding text; semantic grading will replace this fallback.
-  const checkSurgery = () => { if (answerRevealed) return; if (answer.toLowerCase().replace(/\s+/g, " ").includes("team is reviewing")) completeStage("surgery"); else { markWrong(); setVerdict("revise"); } };
-  const checkRewrite = () => { if (answerRevealed) return; const normalized = rewrite.join(" ").toLowerCase(); if (normalized.includes("notebook was") && normalized.includes("clues were")) completeStage("rewrite"); else { markWrong(); setVerdict("revise"); } };
-  const checkSort = () => { if (answerRevealed) return; if (sortedCount === evidenceCards.length) completeStage("sort"); else { markWrong(); setVerdict("revise"); } };
+  const evaluate = (id: StageId, correct: boolean) => {
+    setChecking(id);
+    setTimeout(() => {
+      if (correct) completeStage(id);
+      else { markWrong(); setVerdict("revise"); setChecking(null); }
+    }, 800);
+  };
+  const checkSurgery = () => { if (answerRevealed || checking) return; evaluate("surgery", answer.toLowerCase().replace(/\s+/g, " ").includes("team is reviewing")); };
+  const checkRewrite = () => { if (answerRevealed || checking) return; const normalized = rewrite.join(" ").toLowerCase(); evaluate("rewrite", normalized.includes("notebook was") && normalized.includes("clues were")); };
+  const checkSort = () => { if (answerRevealed || checking) return; evaluate("sort", sortedCount === evidenceCards.length); };
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   const advanceStage = () => {
@@ -427,7 +446,7 @@ function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () 
             <>
               <input aria-label="Correct the sentence" className="input animate-slide-up-d1" onChange={(e) => setAnswer(e.target.value)} style={{ marginTop: 24 }} value={answer} />
               <div className="animate-slide-up-d2" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12 }}>
-                <button className="btn btn-primary" onClick={checkSurgery} type="button">File report</button>
+                <button className="btn btn-primary" disabled={!!checking} onClick={checkSurgery} type="button">File report</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setAnswer(stages[0].prompt)} type="button">Reset to original</button>
               </div>
             </>
@@ -454,7 +473,7 @@ function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () 
                   </div>
                 ))}
               </div>
-              <button className="btn btn-primary animate-slide-up-d3" disabled={answerRevealed} onClick={checkSort} style={{ marginTop: 20 }} type="button">Submit evidence</button>
+              <button className="btn btn-primary animate-slide-up-d3" disabled={answerRevealed || !!checking} onClick={checkSort} style={{ marginTop: 20 }} type="button">Submit evidence</button>
             </>
           )}
           {current.id === "rewrite" && (
@@ -464,10 +483,11 @@ function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () 
                   <input aria-label={`Rewrite sentence ${i + 1}`} className="input" key={i} onChange={(e) => setRewrite(rewrite.map((item, idx) => idx === i ? e.target.value : item))} value={s} />
                 ))}
               </div>
-              <button className="btn btn-primary animate-slide-up-d2" onClick={checkRewrite} style={{ marginTop: 20 }} type="button">Submit case file</button>
+              <button className="btn btn-primary animate-slide-up-d2" disabled={!!checking} onClick={checkRewrite} style={{ marginTop: 20 }} type="button">Submit case file</button>
             </>
           )}
           <FeedbackPanel answerRevealed={answerRevealed} appealOpen={appealOpen} appealSubmitted={appealSubmitted} attempts={attempts} onAppealOpen={() => setAppealOpen(true)} onAppealSubmit={() => { setAppealSubmitted(true); setAppealOpen(false); setVerdict("appeal"); }} onGuidedContinue={() => { completeStage(current.id); advanceStage(); }} rule={current.rule} stageId={current.id} verdict={verdict} />
+          {checking && <div className="loader-overlay"><Loader themeClass={themeClass} label={checkLabel} sub={checkSub} /></div>}
         </div>
         <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="evidence-locker">
