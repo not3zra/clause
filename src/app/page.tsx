@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChartBar, Moon, Palette, Sun, Target, Zap } from "lucide-react";
 import { TeacherPortal } from "../components/teacher-portal";
 
 type View = "landing" | "wizard" | "missions" | "dashboard" | "teacher";
@@ -57,9 +58,9 @@ const studentRows = [
 ];
 
 const themes = [
-  { name: "Detective Office", note: "Case files, evidence tags, and cabinet locks.", accent: "Recommended" },
-  { name: "Cursed Castle", note: "Runes, sealed doors, and lost manuscripts.", accent: "" },
-  { name: "Sci-Fi Lab", note: "Keycards, terminals, and system diagnostics.", accent: "" },
+  { name: "Detective Office", note: "Case files, evidence tags, and cabinet locks.", accent: "Recommended", cssClass: "detective", icon: "🕵️" },
+  { name: "Cursed Castle", note: "Runes, sealed doors, and lost manuscripts.", accent: "", cssClass: "castle", icon: "🏰" },
+  { name: "Sci-Fi Lab", note: "Keycards, terminals, and system diagnostics.", accent: "", cssClass: "scifi", icon: "🚀" },
 ];
 
 export default function Home() {
@@ -82,12 +83,78 @@ export default function Home() {
   );
 }
 
-function Header({ darkMode, onHome, onTeacher, onToggleTheme }: { darkMode: boolean; onHome: () => void; onTeacher: () => void; onToggleTheme: () => void }) {
-  return <><header className="site-header"><nav className="mx-auto flex max-w-[1160px] items-center justify-between px-5 py-4">
-    <button className="flex items-center gap-2.5 text-left" onClick={onHome} type="button"><span className="grid h-9 w-9 place-items-center rounded-md bg-[#0d9488] font-black text-white">C</span><span><span className="block text-lg font-black tracking-[0.12em]">CLAUSE</span><span className="block text-xs font-semibold text-[#667085]">Grammar, made visible</span></span></button>
-    <div className="site-links"><a href="#how-it-works">How it works</a><a href="#features">Features</a><button onClick={onTeacher} type="button">For teachers</button><a href="#sample-room">Sample room</a><a href="#pricing">Pricing</a><a href="#resources">Resources</a></div>
-    <div className="flex items-center gap-4"><button aria-label={darkMode ? "Use light mode" : "Use dark mode"} className="theme-toggle" onClick={onToggleTheme} title={darkMode ? "Use light mode" : "Use dark mode"} type="button"><span aria-hidden="true">{darkMode ? "☀" : "☾"}</span></button><button className="site-sign-in" onClick={onTeacher} type="button">Sign in</button><button className="site-create" onClick={onTeacher} type="button">Create a room</button></div>
-  </nav></header><nav className="mobile-tabs" aria-label="Mobile navigation"><button onClick={onHome} type="button">Home</button><a href="#how-it-works">How it works</a><a href="#sample-room">Sample room</a><button onClick={onTeacher} type="button">For teachers</button><button aria-label={darkMode ? "Use light mode" : "Use dark mode"} onClick={onToggleTheme} title={darkMode ? "Use light mode" : "Use dark mode"} type="button"><span aria-hidden="true">{darkMode ? "☀" : "☾"}</span></button></nav></>;
+function Header({ darkMode, onHome, onTeacher, onToggleTheme, themeClass }: { darkMode: boolean; onHome: () => void; onTeacher: () => void; onToggleTheme: () => void; themeClass?: string }) {
+  return <><header className={`site-header${themeClass ? ` theme-${themeClass}` : ""}`}><div className="site-header-inner">
+    <button className="site-logo" onClick={onHome} type="button"><span className="site-logo-mark">C</span><span>CLAUSE</span></button>
+    <nav className="site-nav"><button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} type="button">How it works</button><button onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })} type="button">Features</button><button onClick={onTeacher} type="button">For teachers</button><button onClick={() => document.getElementById("sample-room")?.scrollIntoView({ behavior: "smooth" })} type="button">Sample room</button></nav>
+    <div className="site-actions"><button aria-label={darkMode ? "Use light mode" : "Use dark mode"} className="theme-btn" onClick={onToggleTheme} title={darkMode ? "Use light mode" : "Use dark mode"} type="button">{darkMode ? <Sun size={16} /> : <Moon size={16} />}</button><button className="btn btn-ghost btn-sm" onClick={onTeacher} type="button">Sign in</button><button className="btn btn-primary btn-sm" onClick={onTeacher} type="button">Create a room</button></div>
+  </div></header><nav className="mobile-nav"><button onClick={onHome} type="button">Home</button><button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })} type="button">How it works</button><button onClick={onTeacher} type="button">Teachers</button><button onClick={onToggleTheme} type="button">{darkMode ? <Sun size={14} /> : <Moon size={14} />}</button></nav></>;
+}
+
+function useScrollReveal() {
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) { entry.target.classList.add("a-revealed"); obs.unobserve(entry.target); }
+      });
+    }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
+    document.querySelectorAll<HTMLElement>("[data-reveal]").forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+}
+
+function useMouseParallax(sectionId: string) {
+  useEffect(() => {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    const mouse = { x: 0.5, y: 0.5 };
+    const onMove = (e: MouseEvent) => {
+      const r = section.getBoundingClientRect();
+      mouse.x = (e.clientX - r.left) / r.width;
+      mouse.y = (e.clientY - r.top) / r.height;
+    };
+    const shapesContainer = section.querySelector<HTMLElement>(".hero-floating-shapes");
+    const glow = section.querySelector<HTMLElement>(".hero-mouse-glow");
+    let rafId: number;
+    const tick = () => {
+      const dx = mouse.x - 0.5;
+      const dy = mouse.y - 0.5;
+      if (shapesContainer) {
+        shapesContainer.style.transform = `translate(${dx * 20}px, ${dy * 20}px)`;
+      }
+      if (glow) {
+        glow.style.transform = `translate(${mouse.x * 100}%, ${mouse.y * 100}%)`;
+        glow.style.left = "0";
+        glow.style.top = "0";
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    rafId = requestAnimationFrame(tick);
+    return () => { window.removeEventListener("mousemove", onMove); cancelAnimationFrame(rafId); };
+  }, [sectionId]);
+}
+
+function useCardTilt() {
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      document.querySelectorAll<HTMLElement>(".feature-card[data-tilt]").forEach((card) => {
+        const r = card.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width;
+        const y = (e.clientY - r.top) / r.height;
+        const rotateX = (0.5 - y) * 10;
+        const rotateY = (x - 0.5) * 10;
+        (card.querySelector(".card-tilt-layer") as HTMLElement).style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+      });
+    };
+    const onLeave = () => {
+      document.querySelectorAll<HTMLElement>(".feature-card[data-tilt] .card-tilt-layer").forEach((el) => { el.style.transform = ""; });
+    };
+    document.addEventListener("mousemove", onMove, { passive: true });
+    document.addEventListener("mouseleave", onLeave, { passive: true });
+    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseleave", onLeave); };
+  }, []);
 }
 
 function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () => void }) {
@@ -100,15 +167,75 @@ function Landing({ onCreate, onSample }: { onCreate: () => void; onSample: () =>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row"><button className="primary-action landing-action flex-1" onClick={onCreate} type="button">Create a room <span aria-hidden="true">&#8594;</span></button><button className="secondary-action landing-action flex-1" onClick={onSample} type="button">Try sample room</button></div>
         <aside aria-label="Judge demo checklist" className="mt-5 border-l-2 border-[#8edbd5] pl-3 text-sm text-[#52677f]"><strong className="block text-[#0f766e]">Judge demo checklist</strong><span>Try a wrong answer and reveal a hint.</span><span className="mx-2" aria-hidden="true">·</span><span>Challenge a result, then inspect the dashboard.</span></aside>
       </div>
-      <div className="hero-motion" aria-hidden="true"><div className="hero-lamp" /><div className="hero-board"><i /><b /><b /><b /><em /></div><div className="hero-card hero-card-one" /><div className="hero-card hero-card-two" /><div className="hero-token hero-token-one" /><div className="hero-token hero-token-two" /></div>
+      <div className="hero-showcase" data-in=".5">
+        <div className="hero-showcase-card">
+          <div className="hero-showcase-header">
+            <div className="hero-showcase-dot r" />
+            <div className="hero-showcase-dot y" />
+            <div className="hero-showcase-dot g" />
+          </div>
+          <div className="hero-showcase-body">
+            <div className="hero-showcase-line w" />
+            <div className="hero-showcase-line s" />
+            <div className="hero-showcase-line w" style={{ width: "65%" }} />
+            <div className="hero-showcase-grid">
+              <div className="hero-showcase-block" />
+              <div className="hero-showcase-block" />
+              <div className="hero-showcase-block" />
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
-    <section className="landing-proof" id="features"><div className="mx-auto grid max-w-[1160px] gap-4 px-5 sm:grid-cols-2 lg:grid-cols-4">
-      <Proof kind="generate" title="AI-generated rooms" text="Custom grammar puzzles, ready for teacher review." />
-      <Proof kind="play" title="Engaging gameplay" text="Short, story-led challenges with clear feedback." />
-      <Proof kind="insight" title="Real insights" text="Spot progress, misconceptions, hints, and appeals." />
-      <Proof kind="teacher" title="Teacher friendly" text="Create, assign, and review without extra setup." />
-    </div></section>
-    <section className="how-it-works" id="how-it-works"><div className="mx-auto max-w-[1080px] px-5 py-20"><p className="agency-chip mx-auto w-fit">How it works</p><h2>Create. Assign. Watch them <span>excel.</span></h2><p className="how-intro">A focused grammar room goes from learning goal to useful classroom insight in four clear steps.</p><div className="how-steps"><HowStep kind="setup" number="1" title="Choose a focus" text="Select the grade, grammar skill, and a theme for the room." /><HowStep kind="generate" number="2" title="Generate a room" text="Clause prepares a draft with puzzles, clues, and answer support." /><HowStep kind="play" number="3" title="Students play" text="They solve, learn from feedback, and complete the final lock." /><HowStep kind="insight" number="4" title="Get insight" text="See which skills are secure and where your class needs help." /></div></div></section>
+    <section className="features" id="features">
+      <div className="features-inner" data-reveal>
+        <div className="features-header">
+          <span className="features-label">Features</span>
+          <h2>Everything you need to teach grammar <em>effectively.</em></h2>
+          <p>From AI generation to real-time insights — built for teachers who want results.</p>
+        </div>
+        <div className="features-grid">
+          <div className="feature-card c1" data-reveal data-tilt><div className="card-tilt-layer"><div className="feature-card-icon"><Palette /></div><h3>AI-generated rooms</h3><p>Custom grammar puzzles tailored to your class, ready for teacher review before publishing.</p><div className="feature-card-accent" /></div></div>
+          <div className="feature-card c2" data-reveal data-tilt><div className="card-tilt-layer"><div className="feature-card-icon"><Zap /></div><h3>Engaging gameplay</h3><p>Short, story-led challenges with immediate feedback that keep students motivated.</p><div className="feature-card-accent" /></div></div>
+          <div className="feature-card c3" data-reveal data-tilt><div className="card-tilt-layer"><div className="feature-card-icon"><ChartBar /></div><h3>Real insights</h3><p>Spot progress, misconceptions, hints used, and appeals — see exactly who needs help.</p><div className="feature-card-accent" /></div></div>
+          <div className="feature-card c4" data-reveal data-tilt><div className="card-tilt-layer"><div className="feature-card-icon"><Target /></div><h3>Teacher friendly</h3><p>Create, assign, and review in minutes with zero setup or training required.</p><div className="feature-card-accent" /></div></div>
+        </div>
+      </div>
+    </section>
+    <section className="steps" id="how-it-works">
+      <div className="steps-inner" data-reveal>
+        <div className="steps-header">
+          <span className="steps-label">How it works</span>
+          <h2>Create. Assign. Watch them <em>excel.</em></h2>
+          <p>A focused grammar room goes from learning goal to useful classroom insight in four clear steps.</p>
+        </div>
+        <div className="steps-timeline">
+          <div className="step-card" data-reveal><div className="step-num"><span>01</span></div><div className="step-body"><h3>Choose a focus</h3><p>Select the grade, grammar skill, and a theme for the room.</p></div></div>
+          <div className="step-card" data-reveal><div className="step-num"><span>02</span></div><div className="step-body"><h3>Generate a room</h3><p>Clause prepares a draft with puzzles, clues, and answer support.</p></div></div>
+          <div className="step-card" data-reveal><div className="step-num"><span>03</span></div><div className="step-body"><h3>Students play</h3><p>They solve, learn from feedback, and complete the final lock.</p></div></div>
+          <div className="step-card" data-reveal><div className="step-num"><span>04</span></div><div className="step-body"><h3>Get insight</h3><p>Which skills are secure and where your class needs help.</p></div></div>
+        </div>
+      </div>
+    </section>
+    <section className="cta-banner">
+      <div className="cta-banner-bg" />
+      <div className="cta-banner-bg-shapes">
+        <div className="cta-shape cs1" />
+        <div className="cta-shape cs2" />
+        <div className="cta-shape cs3" />
+      </div>
+      <div className="cta-banner-inner" data-reveal>
+        <div className="cta-banner-content">
+          <h2>Ready to transform grammar practice?</h2>
+          <p>Start building your first grammar escape room in minutes. No credit card required.</p>
+          <div className="cta-actions">
+            <button className="btn btn-primary btn-glow" onClick={onCreate} type="button">Get started free <span aria-hidden="true">&rarr;</span></button>
+            <button className="btn btn-secondary btn-glass" onClick={onSample} type="button">See how it works</button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <footer className="site-footer"><div className="footer-inner"><div className="footer-brand"><span>C</span>Clause</div><nav className="footer-nav"><a href="#how-it-works">How it works</a><a href="#features">Features</a><a href="#sample-room">Try a room</a><button className="btn-ghost btn-sm" onClick={onCreate} type="button">For teachers</button></nav><span className="footer-copy">&copy; 2026 Clause. Grammar, made visible.</span></div></footer>
   </>;
 }
 
@@ -144,55 +271,278 @@ function TeacherWizard({ step, setStep, theme, setTheme, onPreview }: { step: nu
 }
 
 function MissionPlayer({ theme, onDashboard }: { theme: string; onDashboard: () => void }) {
+  const [sortState, setSortState] = useState<Record<string, string>>({});
   const [stageIndex, setStageIndex] = useState(0);
-  const [answer, setAnswer] = useState(stages[0].prompt);
+  const [seconds, setSeconds] = useState(720);
+  const [completed, setCompleted] = useState<StageId[]>([]);
   const [verdict, setVerdict] = useState<Verdict>("idle");
   const [attempts, setAttempts] = useState(0);
   const [answerRevealed, setAnswerRevealed] = useState(false);
-  const [sortState, setSortState] = useState<Record<string, string>>({});
+  const [answer, setAnswer] = useState(stages[0].prompt);
   const [rewrite, setRewrite] = useState(["Neither the map nor the notebook were in the drawer.", "The clues was nearby."]);
-  const [completed, setCompleted] = useState<StageId[]>([]);
+  const [phase, setPhase] = useState<"launch" | "stages" | "lock" | "success">("launch");
   const [appealOpen, setAppealOpen] = useState(false);
   const [appealSubmitted, setAppealSubmitted] = useState(false);
   const [lockInput, setLockInput] = useState<string[]>([]);
-  const [seconds, setSeconds] = useState(720);
-  const [success, setSuccess] = useState(false);
-  // Evidence Sort is deterministic in the demo so the stage works without an AI service.
+  const [tokenPop, setTokenPop] = useState<StageId | null>(null);
+
   const sortedCount = useMemo(() => evidenceCards.filter((card) => sortState[card.sentence] === card.answer).length, [sortState]);
   const current = stages[stageIndex];
+  const themeClass = themes.find((t) => t.name === theme)?.cssClass ?? "detective";
+  const currentTheme = themes.find((t) => t.name === theme) ?? themes[0];
 
-  useEffect(() => { const timer = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000); return () => window.clearInterval(timer); }, []);
-  const completeStage = (id: StageId) => { setCompleted((items) => items.includes(id) ? items : [...items, id]); setVerdict("correct"); };
+  useEffect(() => { const timer = window.setInterval(() => setSeconds((v) => Math.max(0, v - 1)), 1000); return () => window.clearInterval(timer); }, []);
+
+  const completeStage = (id: StageId) => {
+    setTokenPop(id);
+    setTimeout(() => { setTokenPop(null); }, 500);
+    setCompleted((items) => items.includes(id) ? items : [...items, id]);
+    setVerdict("correct");
+  };
   const markWrong = () => setAttempts((count) => { const next = count + 1; if (next >= 3) setAnswerRevealed(true); return next; });
   // Accept the target repair with surrounding text; semantic grading will replace this fallback.
   const checkSurgery = () => { if (answerRevealed) return; if (answer.toLowerCase().replace(/\s+/g, " ").includes("team is reviewing")) completeStage("surgery"); else { markWrong(); setVerdict("revise"); } };
   const checkRewrite = () => { if (answerRevealed) return; const normalized = rewrite.join(" ").toLowerCase(); if (normalized.includes("notebook was") && normalized.includes("clues were")) completeStage("rewrite"); else { markWrong(); setVerdict("revise"); } };
   const checkSort = () => { if (answerRevealed) return; if (sortedCount === evidenceCards.length) completeStage("sort"); else { markWrong(); setVerdict("revise"); } };
-  const allComplete = completed.length === stages.length;
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
-  if (success) return <SuccessScreen onDashboard={onDashboard} />;
-  if (allComplete && stageIndex === 2) return <FinalLock tokens={stages.map((item) => item.token)} lockInput={lockInput} setLockInput={setLockInput} onUnlock={() => setSuccess(true)} />;
+  const advanceStage = () => {
+    if (stageIndex < 2) {
+      setStageIndex(stageIndex + 1);
+      setAttempts(0);
+      setAnswerRevealed(false);
+      setVerdict("idle");
+      setAnswer(stages[Math.min(stageIndex + 1, 2)].prompt);
+    } else {
+      setPhase("lock");
+    }
+  };
 
-  return <section className="mx-auto max-w-[1080px] px-5 py-7"><div className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><span className="demo-badge">Agency training case</span><h1 className="mt-2 text-2xl font-black">The Missing Verb File</h1><p className="mt-1 text-sm text-[#667085]">{theme} | Recover three evidence tags to open the Evidence Locker.</p></div><div className="timer">Case time {time}</div></div><StageProgressRail active={stageIndex} completed={completed} />
-    <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]"><section className="panel case-file"><p className="eyebrow">Evidence Room {stageIndex + 1} of 3</p><h2 className="mt-2 text-2xl font-black">{current.title}</h2><p className="mt-2 text-[#667085]">{current.prompt}</p>
-      {current.id === "surgery" && <><input aria-label="Correct the sentence" className="input-shell mt-6 text-base" onChange={(event) => setAnswer(event.target.value)} value={answer} /><div className="mt-3 flex items-center justify-between gap-3"><button className="primary-action" onClick={checkSurgery} type="button">File report</button><button className="text-sm font-bold text-[#0f766e] hover:underline" onClick={() => setAnswer(stages[0].prompt)} type="button">Reopen case</button></div></>}
-      {current.id === "sort" && <><p className="mt-5 text-sm font-bold text-[#0f766e]">{sortedCount} of {evidenceCards.length} evidence cards correct</p><div className="mt-4 grid gap-3">{evidenceCards.map((card) => <div className="rounded-md border border-[#e8e2d7] p-4" key={card.sentence}><p className="font-semibold">{card.sentence}</p><div className="mt-3 flex flex-wrap gap-2">{["Agrees", "Needs revision"].map((choice) => <button className={`choice ${sortState[card.sentence] === choice ? "active" : ""}`} key={choice} onClick={() => setSortState({ ...sortState, [card.sentence]: choice })} type="button">{choice}</button>)}</div></div>)}</div><button className="primary-action mt-5" disabled={answerRevealed} onClick={checkSort} type="button">Submit evidence</button></>}
-      {current.id === "rewrite" && <><div className="mt-5 space-y-3">{rewrite.map((sentence, index) => <input aria-label={`Rewrite sentence ${index + 1}`} className="input-shell" key={index} onChange={(event) => setRewrite(rewrite.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} value={sentence} />)}</div><button className="primary-action mt-5" onClick={checkRewrite} type="button">Submit case file</button></>}
-      <FeedbackPanel answerRevealed={answerRevealed} appealOpen={appealOpen} appealSubmitted={appealSubmitted} attempts={attempts} onAppealOpen={() => setAppealOpen(true)} onAppealSubmit={() => { setAppealSubmitted(true); setAppealOpen(false); setVerdict("appeal"); }} onGuidedContinue={() => { completeStage(current.id); setAppealOpen(false); setAttempts(0); setAnswerRevealed(false); setVerdict("idle"); if (stageIndex < 2) setStageIndex(stageIndex + 1); }} rule={current.rule} stageId={current.id} verdict={verdict} />
-      {verdict === "correct" && !allComplete && <button className="secondary-action mt-5" onClick={() => { setStageIndex(Math.min(2, stageIndex + 1)); setAttempts(0); setAnswerRevealed(false); setVerdict("idle"); }} type="button">Inspect next evidence</button>}
-    </section><aside className="space-y-4"><div className="panel evidence-locker"><p className="eyebrow">Evidence Locker</p><div className="mt-4 flex flex-wrap gap-2">{stages.map((item) => <span className={`token ${completed.includes(item.id) ? "token-ready" : ""}`} key={item.id}>{completed.includes(item.id) ? item.token : "Locked"}</span>)}</div><p className="mt-4 text-sm font-bold text-[#667085]">{completed.length} lock{completed.length === 1 ? "" : "s"} disengaged</p></div><div className="quinn-note"><span className="detective-mark" aria-hidden="true" /><p><strong>Agent Clause</strong><br />That verb looks suspicious. Inspect the evidence closely.</p></div></aside></div>
-  </section>;
+  if (phase === "launch") return (
+    <div className={`room-launch theme-${themeClass}`}>
+      <span className="launch-icon">{currentTheme.icon}</span>
+      <p className="eyebrow">{theme} mission</p>
+      <h1>The Missing Verb File</h1>
+      <p className="launch-desc">Recover three evidence tokens by solving grammar puzzles. Collect all tokens to unlock the final case file.</p>
+      <div className="launch-stages">
+        {stages.map((s, i) => (
+          <div className={`launch-stage animate-slide-up-d${i + 1}`} key={s.id}>
+            <span className="stage-icon">{["✏️", "📋", "📝"][i]}</span>
+            <span>{s.title}</span>
+          </div>
+        ))}
+      </div>
+      <div className="launch-actions">
+        <button className="btn btn-primary" onClick={() => setPhase("stages")} type="button">Begin mission</button>
+      </div>
+    </div>
+  );
+
+  if (phase === "success") return (
+    <div className="success">
+      <div className="confetti-container">
+        {Array.from({ length: 10 }).map((_, i) => <div className="confetti-piece" key={i} />)}
+      </div>
+      <div className="card card-lg">
+        <div className="success-icon success-bounce">OK</div>
+        <p className="eyebrow" style={{ marginTop: 16 }}>Mission complete</p>
+        <h1 style={{ fontSize: 28 }}>Case closed.</h1>
+        <p style={{ marginTop: 8, color: "var(--text-secondary)" }}>You recovered every token and cracked the case.</p>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12, marginTop: 24 }}>
+          <button className="btn btn-primary" onClick={onDashboard} type="button">View results</button>
+          <button className="btn btn-secondary" type="button">Back to missions</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (phase === "lock") return (
+    <div className={`lock theme-${themeClass}`}>
+      <div className="card card-lg">
+        <p className="eyebrow">Final lock</p>
+        <h1>Open the cabinet</h1>
+        <p style={{ marginTop: 8, color: "var(--text-secondary)" }}>Place your recovered tokens in stage order.</p>
+        <div className="lock-slots">
+          {stages.map((_, i) => (
+            <div className={`lock-slot ${lockInput[i] ? "filled" : ""}`} key={i}>
+              {lockInput[i] ?? ""}
+            </div>
+          ))}
+        </div>
+        <div className="lock-tokens">
+          {stages.map((s) => (
+            <button
+              className={`token ${completed.includes(s.id) ? "earned" : ""}`}
+              disabled={!completed.includes(s.id) || lockInput.includes(s.token)}
+              key={s.token}
+              onClick={() => setLockInput([...lockInput, s.token])}
+              type="button"
+            >
+              {s.token}
+            </button>
+          ))}
+        </div>
+        <div className="lock-actions">
+          <button className="btn btn-ghost btn-sm" onClick={() => setLockInput([])} type="button">Clear</button>
+          <button
+            className="btn btn-primary"
+            disabled={lockInput.join(" ") !== stages.map((s) => s.token).join(" ")}
+            onClick={() => setPhase("success")}
+            type="button"
+          >
+            Unlock cabinet
+          </button>
+        </div>
+        {lockInput.length === 3 && lockInput.join(" ") !== stages.map((s) => s.token).join(" ") && (
+          <p className="lock-error shake" key={lockInput.join("")}>That order does not open the lock. Try the stage sequence.</p>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`mission-player theme-${themeClass}`}>
+      <div className="mission-player-header header-shimmer">
+        <div>
+          <span className="badge">{currentTheme.icon} {theme} mission</span>
+          <h1>The Missing Verb File</h1>
+          <p>Stage {stageIndex + 1} of 3 &middot; Collect all tokens to unlock the case</p>
+        </div>
+        <div className={`mission-timer ${seconds <= 60 ? "timer-urgent" : ""}`}>{time}</div>
+      </div>
+      <div className="progress-rail">
+        {stages.map((stage, i) => (
+          <div className={`progress-step ${completed.includes(stage.id) ? "done" : ""}`} key={stage.id}>
+            <div className={`progress-step-marker ${completed.includes(stage.id) ? "done" : stageIndex === i ? "current" : ""}`}>
+              {completed.includes(stage.id) ? "OK" : i + 1}
+            </div>
+            <div className="progress-step-label">
+              <strong>{stage.title}</strong>
+              <small>{completed.includes(stage.id) ? stage.token : stageIndex === i ? "In progress" : "Locked"}</small>
+            </div>
+            {i < stages.length - 1 && <div className={`progress-step-connector ${completed.includes(stage.id) ? "done" : ""}`} />}
+          </div>
+        ))}
+      </div>
+      <div className="game-layout">
+        <div className="game-main stage-enter" key={stageIndex}>
+          <p className="eyebrow">Stage {stageIndex + 1} of 3</p>
+          <h2>{current.title}</h2>
+          <p className="stage-desc">{current.prompt}</p>
+          {current.id === "surgery" && (
+            <>
+              <input aria-label="Correct the sentence" className="input animate-slide-up-d1" onChange={(e) => setAnswer(e.target.value)} style={{ marginTop: 24 }} value={answer} />
+              <div className="animate-slide-up-d2" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12 }}>
+                <button className="btn btn-primary" onClick={checkSurgery} type="button">File report</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAnswer(stages[0].prompt)} type="button">Reset to original</button>
+              </div>
+            </>
+          )}
+          {current.id === "sort" && (
+            <>
+              <div className="sort-count animate-slide-up-d1">{sortedCount} of {evidenceCards.length} correct</div>
+              <div className="animate-slide-up-d2" style={{ display: "grid", gap: 12, marginTop: 16 }}>
+                {evidenceCards.map((card, ci) => (
+                  <div className={`sort-card card-slide-in-d${ci}`} key={card.sentence}>
+                    <p>{card.sentence}</p>
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      {["Agrees", "Needs revision"].map((choice) => (
+                        <button
+                          className={`btn btn-sm ${sortState[card.sentence] === choice ? "btn-primary" : "btn-secondary"}`}
+                          key={choice}
+                          onClick={() => setSortState({ ...sortState, [card.sentence]: choice })}
+                          type="button"
+                        >
+                          {choice}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-primary animate-slide-up-d3" disabled={answerRevealed} onClick={checkSort} style={{ marginTop: 20 }} type="button">Submit evidence</button>
+            </>
+          )}
+          {current.id === "rewrite" && (
+            <>
+              <div className="animate-slide-up-d1" style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 20 }}>
+                {rewrite.map((s, i) => (
+                  <input aria-label={`Rewrite sentence ${i + 1}`} className="input" key={i} onChange={(e) => setRewrite(rewrite.map((item, idx) => idx === i ? e.target.value : item))} value={s} />
+                ))}
+              </div>
+              <button className="btn btn-primary animate-slide-up-d2" onClick={checkRewrite} style={{ marginTop: 20 }} type="button">Submit case file</button>
+            </>
+          )}
+          <FeedbackPanel answerRevealed={answerRevealed} appealOpen={appealOpen} appealSubmitted={appealSubmitted} attempts={attempts} onAppealOpen={() => setAppealOpen(true)} onAppealSubmit={() => { setAppealSubmitted(true); setAppealOpen(false); setVerdict("appeal"); }} onGuidedContinue={() => { completeStage(current.id); advanceStage(); }} rule={current.rule} stageId={current.id} verdict={verdict} />
+        </div>
+        <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="evidence-locker">
+            <p className="eyebrow">Evidence Locker</p>
+            <div className="tokens">
+              {stages.map((item) => (
+                <span className={`token ${completed.includes(item.id) ? "earned" : ""} ${tokenPop === item.id ? "token-pop" : ""}`} key={item.id}>
+                  {completed.includes(item.id) ? item.token : "Locked"}
+                </span>
+              ))}
+            </div>
+            <p className="locker-stats">{completed.length} of {stages.length} tokens recovered</p>
+          </div>
+          <div className="agent-note">
+            <div>
+              <strong>Agent Clause</strong>
+              {verdict === "correct" ? "Good work! One step closer to cracking the case." : verdict === "revise" ? "That doesn't look right. Check the subject-verb match carefully." : "Examine each puzzle carefully before filing your report."}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
 }
 
 function StageProgressRail({ active, completed }: { active: number; completed: StageId[] }) { return <div className="progress-rail">{stages.map((stage, index) => <div className="progress-step" key={stage.id}><span className={`marker ${completed.includes(stage.id) ? "done" : active === index ? "current" : ""}`}>{completed.includes(stage.id) ? "OK" : index + 1}</span><span><strong>{stage.title}</strong><small>{completed.includes(stage.id) ? stage.token : active === index ? "In progress" : "Locked"}</small></span>{index < stages.length - 1 && <i />}</div>)}</div>; }
 
 function FeedbackPanel({ answerRevealed, appealOpen, appealSubmitted, attempts, onAppealOpen, onAppealSubmit, onGuidedContinue, rule, stageId, verdict }: { answerRevealed: boolean; appealOpen: boolean; appealSubmitted: boolean; attempts: number; onAppealOpen: () => void; onAppealSubmit: () => void; onGuidedContinue: () => void; rule: string; stageId: StageId; verdict: Verdict }) {
   if (verdict === "idle") return null;
-  const label = verdict === "correct" ? "Evidence Verified" : verdict === "appeal" ? "Awaiting review" : "Reopen the case";
-  const hint = attempts > 1 ? "Final guidance: repair the agreement before submitting again." : "Hint: identify the subject before you change the verb.";
-  const answers: Record<StageId, { answer: string; reason: string }> = { surgery: { answer: "The team is reviewing the witness notes before lunch.", reason: "Team is singular, so it takes is." }, sort: { answer: "Agrees; Needs revision; Agrees; Needs revision.", reason: "Stack is singular, while detective and clerk make a plural subject." }, rewrite: { answer: "Neither the map nor the notebook was in the drawer. The clues were nearby.", reason: "Use was with the singular neither/nor pair and were with plural clues." } };
-  return <div className={`feedback feedback-${verdict}`}><div className="quinn-line">Agent Clause: {verdict === "correct" ? "Evidence verified. Nice work, detective." : "Hmm, the subject seems singular. Take another look."}</div><p className="mt-3 text-sm"><strong>Checking:</strong> {rule}</p><p className="mt-3 font-black"><span className="status-icon">{verdict === "correct" ? "OK" : verdict === "appeal" ? "..." : "!"}</span>{label}</p>{verdict === "revise" && <p className="mt-3 text-sm leading-6">{answerRevealed ? "Answer revealed after three reports." : hint}</p>}{answerRevealed && <div className="mt-4 rounded-md bg-white/70 p-3 text-sm leading-6"><strong>Correct report: </strong>{answers[stageId].answer}<br /><strong>Why: </strong>{answers[stageId].reason}<button className="secondary-action mt-3" onClick={onGuidedContinue} type="button">Inspect next evidence</button></div>}{appealSubmitted && <p className="mt-3 text-sm">Your note is awaiting teacher review. You can keep playing.</p>}{!answerRevealed && !appealOpen && verdict !== "appeal" && <button className="mt-4 text-sm font-bold text-[#0f766e] underline" onClick={onAppealOpen} type="button">Challenge this result</button>}{!answerRevealed && appealOpen && <div className="mt-4 border-t border-current/20 pt-4"><label className="text-sm font-bold">Optional explanation<textarea className="input-shell mt-2 min-h-20 text-[#172235]" placeholder="Tell your teacher what you intended." /></label><button className="secondary-action mt-3" onClick={onAppealSubmit} type="button">Submit challenge</button></div>}</div>;
+  const label = verdict === "correct" ? "Evidence verified" : verdict === "appeal" ? "Awaiting review" : "Needs revision";
+  const hint = attempts > 1 ? "Final hint: check the subject-verb match carefully before submitting again." : "Hint: find the real subject before changing the verb.";
+  const answers: Record<StageId, { answer: string; reason: string }> = {
+    surgery: { answer: "The team is reviewing the witness notes before lunch.", reason: "Team is a singular collective noun, so it takes 'is'." },
+    sort: { answer: "Agrees; Needs revision; Agrees; Needs revision.", reason: "'A stack' is singular; 'the detective and the clerk' is a compound plural subject." },
+    rewrite: { answer: "Neither the map nor the notebook was in the drawer. The clues were nearby.", reason: "'Neither/nor' with singular nouns takes a singular verb; 'clues' is plural." }
+  };
+  return (
+    <div className={`feedback-panel ${verdict === "correct" ? "correct" : verdict === "appeal" ? "appeal" : "revise"}`}>
+      <div className="fb-label">
+        <span className="fb-icon">{verdict === "correct" ? "OK" : verdict === "appeal" ? "..." : "!"}</span>
+        {label}
+      </div>
+      <p style={{ fontSize: 13, marginTop: 4, color: "var(--text)" }}>Rule: {rule}</p>
+      {verdict === "revise" && (
+        <div className="fb-hint">{answerRevealed ? "Answer revealed after three attempts." : hint}</div>
+      )}
+      {answerRevealed && (
+        <div className="fb-explanation">
+          <strong>Correct answer: </strong>{answers[stageId].answer}<br />
+          <strong>Why: </strong>{answers[stageId].reason}
+          <button className="btn btn-secondary btn-sm" onClick={onGuidedContinue} style={{ marginTop: 12 }} type="button">Continue with guidance</button>
+        </div>
+      )}
+      {verdict === "correct" && (
+        <button className="btn btn-secondary btn-sm" onClick={onGuidedContinue} style={{ marginTop: 12 }} type="button">Continue to next stage</button>
+      )}
+      {appealSubmitted && <div className="fb-hint">Your challenge is awaiting teacher review. Keep playing.</div>}
+      {!answerRevealed && !appealOpen && verdict === "revise" && (
+        <button className="btn btn-ghost btn-sm" onClick={onAppealOpen} style={{ marginTop: 12 }} type="button">Challenge this result</button>
+      )}
+      {!answerRevealed && appealOpen && (
+        <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
+          <label className="label">Optional explanation</label>
+          <textarea className="input" placeholder="Tell your teacher what you intended." style={{ marginTop: 6 }} />
+          <button className="btn btn-secondary btn-sm" onClick={onAppealSubmit} style={{ marginTop: 8 }} type="button">Submit challenge</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FinalLock({ tokens, lockInput, setLockInput, onUnlock }: { tokens: string[]; lockInput: string[]; setLockInput: (tokens: string[]) => void; onUnlock: () => void }) { const rightOrder = lockInput.join(" ") === tokens.join(" "); return <section className="mx-auto max-w-xl px-5 py-14"><div className="panel text-center"><p className="eyebrow">Final lock</p><h1 className="mt-2 text-3xl font-black">Open the cabinet</h1><p className="mt-3 text-[#667085]">Enter the recovered tokens in their stage order.</p><div className="mt-7 grid grid-cols-3 gap-3">{tokens.map((_, index) => <div className="lock-slot" key={index}>{lockInput[index] ?? ""}</div>)}</div><div className="mt-6 flex flex-wrap justify-center gap-2">{tokens.map((token) => <button className="choice" disabled={lockInput.includes(token)} key={token} onClick={() => setLockInput([...lockInput, token])} type="button">{token}</button>)}</div><div className="mt-5 flex justify-center gap-2"><button className="ghost-action" onClick={() => setLockInput([])} type="button">Clear</button><button className="primary-action" disabled={!rightOrder} onClick={onUnlock} type="button">Unlock cabinet</button></div>{lockInput.length === 3 && !rightOrder && <p className="mt-4 text-sm text-[#9a3f35]">That order does not open the lock. Try the stage sequence.</p>}</div></section>; }

@@ -3,8 +3,14 @@ import { advanceMission, studentAuthEmail, validateStudentRegistration } from ".
 
 describe("student invite-to-completion flow", () => {
   it("accepts email-free registration and persists a resumed, completed three-stage mission", () => {
-    const registration = validateStudentRegistration({ fullName: "Aarav Mehta", rollNumber: "7B-04", username: "aarav_mehta", password: "safe-pass-123" });
-    expect(registration).toEqual({ ok: true, value: { fullName: "Aarav Mehta", rollNumber: "7B-04", username: "aarav_mehta", password: "safe-pass-123" } });
+    const registration = validateStudentRegistration({ fullName: "Aarav Mehta", rollNumber: "7B-04" });
+    expect(registration.ok).toBe(true);
+    if (registration.ok) {
+      expect(registration.value.fullName).toBe("Aarav Mehta");
+      expect(registration.value.rollNumber).toBe("7B-04");
+      expect(registration.value.username).toMatch(/^student_/);
+      expect(registration.value.password).toMatch(/^clause-/);
+    }
     expect(studentAuthEmail("aarav_mehta")).toBe("student.aarav_mehta@accounts.clause.invalid");
 
     const started = advanceMission({ stage: 0, recoveredTokens: [], completedAt: null }, "CASE");
@@ -13,11 +19,11 @@ describe("student invite-to-completion flow", () => {
     expect(advanceMission(resumed, "OPEN")).toEqual({ stage: 3, recoveredTokens: ["CASE", "FILE", "OPEN"], completedAt: "complete" });
   });
 
-  it("rejects missing student details and usernames that cannot safely map to an internal auth identity", () => {
-    expect(validateStudentRegistration({ fullName: "", rollNumber: "", username: "bad name", password: "short" })).toEqual({
+  it("rejects missing student details", () => {
+    expect(validateStudentRegistration({ fullName: "", rollNumber: "" })).toEqual({
       ok: false,
       errors: {
-        fullName: "Enter the student's full name.", rollNumber: "Enter a roll number.", username: "Use 3–30 lowercase letters, numbers, or underscores.", password: "Use at least 8 characters for the password.",
+        fullName: "Enter your full name.", rollNumber: "Enter your roll number.",
       },
     });
   });

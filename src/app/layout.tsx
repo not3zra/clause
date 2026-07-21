@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
+import { Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+
+const display = Source_Serif_4({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "900"],
+  variable: "--font-display",
+});
 
 export const metadata: Metadata = {
   title: "Clause | Grammar Missions",
@@ -12,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className={`h-full antialiased ${display.variable}`}>
       <body className="min-h-full">{children}</body>
     </html>
   );

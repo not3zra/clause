@@ -1,8 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { createOpaqueToken, hashOpaqueToken, studentSessionMaxAgeSeconds, validateStudentEnrolment } from "@/lib/student-sessions";
+import { hashOpaqueToken } from "@/lib/student-sessions";
+import { studentAuthEmail, validateStudentRegistration } from "@/lib/students";
 import { resolveStudentSession, studentSessionCookie } from "@/lib/student-session-server";
-import { anonymousRateLimitKey, durableRateLimit, requestTooLarge, sameOrigin, verifyTurnstile } from "@/lib/security";
+import { anonymousRateLimitKey, durableRateLimit, requestTooLarge, sameOrigin } from "@/lib/security";
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -37,23 +38,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!sameOrigin(request) || requestTooLarge(request)) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   const rate = await durableRateLimit(await anonymousRateLimitKey(request, "enrolment"), 10, 3600);
   if (!rate.allowed) return NextResponse.json({ error: "Too many enrolment attempts. Please try again later." }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
-  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  if (!await verifyTurnstile(body?.turnstileToken, request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null)) return NextResponse.json({ error: "Security verification failed. Please try again." }, { status: 403 });
-  const input = validateStudentEnrolment(body);
+  const body = await request.json().catch(() => null) as { fullName?: string; rollNumber?: string } | null;
+  if (!body || !body.fullName || !body.rollNumber) return NextResponse.json({ error: "Full name and roll number are required." }, { status: 400 });
+  const input = validateStudentRegistration({ fullName: body.fullName, rollNumber: body.rollNumber });
   if (!input.ok) return NextResponse.json({ errors: input.errors }, { status: 400 });
   try {
     const invite = await inviteFor(inviteToken);
     if (!invite) return NextResponse.json({ error: "This invite is unavailable." }, { status: 404 });
     const admin = adminClient();
-    const opaqueToken = createOpaqueToken();
-    const expiresAt = new Date(Date.now() + studentSessionMaxAgeSeconds * 1000).toISOString();
-    const internalEmail = `session.${crypto.randomUUID()}@accounts.clause.invalid`;
-    const { data: userData, error: userError } = await admin.auth.admin.createUser({ email: internalEmail, email_confirm: true, user_metadata: { account_type: "student", passwordless_session: true } });
-    if (userError || !userData.user) return NextResponse.json({ error: "Could not create the student account." }, { status: 400 });
-    const { data: enrolment, error: enrolmentError } = await admin.rpc("enrol_student_with_session", { p_assignment_id: invite.id, p_student_id: userData.user.id, p_full_name: input.value.fullName, p_roll_number: input.value.rollNumber, p_session_hash: hashOpaqueToken(opaqueToken), p_expires_at: expiresAt }).single();
-    if (enrolmentError) { await admin.auth.admin.deleteUser(userData.user.id); return NextResponse.json({ error: "Could not create the student account." }, { status: 400 }); }
-    const response = NextResponse.json({ assignmentId: invite.id, enrolmentId: (enrolment as { student_assignment_id: string }).student_assignment_id }, { status: 201 });
-    response.cookies.set(studentSessionCookie, opaqueToken, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: studentSessionMaxAgeSeconds });
-    return response;
+    const { data: userData, error: userError } = await admin.auth.admin.createUser({ email: studentAuthEmail(input.value.username), password: input.value.password, email_confirm: true, user_metadata: { account_type: "student" } });
+    if (userError || !userData.user) return NextResponse.json({ error: userError?.message ?? "Could not create the student account." }, { status: 400 });
+    const studentId = userData.user.id;
+    const { error: profileError } = await admin.from("student_profiles").insert({ id: studentId, full_name: input.value.fullName, roll_number: input.value.rollNumber, username: input.value.username });
+    if (profileError) { await admin.auth.admin.deleteUser(studentId); return NextResponse.json({ error: profileError.message }, { status: 400 }); }
+    const { data: enrolment, error: enrolmentError } = await admin.from("student_assignments").insert({ student_id: studentId, assignment_id: invite.id }).select("id").single();
+    if (enrolmentError) { await admin.auth.admin.deleteUser(studentId); return NextResponse.json({ error: enrolmentError.message }, { status: 400 }); }
+    const { error: attemptError } = await admin.from("mission_attempts").insert({ student_assignment_id: enrolment.id });
+    if (attemptError) return NextResponse.json({ error: attemptError.message }, { status: 400 });
+    return NextResponse.json({ assignmentId: invite.id, enrolmentId: enrolment.id, authEmail: studentAuthEmail(input.value.username) }, { status: 201 });
   } catch { return NextResponse.json({ error: "Student registration is unavailable." }, { status: 503 }); }
 }
