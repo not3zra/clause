@@ -7,6 +7,7 @@ import {
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
   providerStageCountSchema,
+  roomGenerationSystemInstruction,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
 import { generationFailureCode, providerFailureCode } from "@/lib/generation-diagnostics";
@@ -171,8 +172,7 @@ export async function POST(request: NextRequest) {
         input: [
           {
             role: "system",
-            content:
-              "Create a kid-safe grammar escape-room draft. Return only the requested JSON. Do not include personal data, violence, threats, stereotypes, or unsafe content. Make the supplied theme the actual setting: its story and every stage must use distinct setting-specific people, places, objects, clues, and a final mystery. For Detective Office, use a non-violent case with detectives, evidence, suspects or witnesses, and clues. Do not reuse the sample CASE/FILE/OPEN/SEAL storyline. Match the exercise to its itemType exactly: deterministic stages are sentence classifications with 3-5 items and each item answer is exactly Agrees or Needs revision; free_text stages ask for a specific grammar repair or construction, have no items, and list accepted corrected wording. Verify every answer key against the stated grammar rule before returning it.",
+            content: roomGenerationSystemInstruction,
           },
           {
             role: "user",

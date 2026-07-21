@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generationRepairInstruction, groqFailedGenerationText, groqOutputText, providerStageCountSchema, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
+import { generationRepairInstruction, groqFailedGenerationText, groqOutputText, providerStageCountSchema, roomGenerationSystemInstruction, parseGeneratedRoomDraft, validateGeneratedRoomDraft } from "./room-generation";
 
 const valid = { title: "The Missing Map", story: "Help the library team recover the map.", grade: 7, difficulty: "standard", stages: [1,2,3].map((ordinal) => ({ ordinal, title: `Stage ${ordinal}`, prompt: "The team are ready.", rule: "Match the singular subject and verb.", token: `TOKEN${ordinal}`, itemType: "free_text", acceptedAnswers: ["The team is ready."], rubric: "Use is with team.", hints: ["Find the subject."] })) };
 
@@ -35,5 +35,8 @@ describe("generated room validation", () => {
   });
   it("keeps the provider schema permissive enough for server-side repair", () => {
     expect(providerStageCountSchema()).toEqual({ minItems: 1 });
+  });
+  it("tells free-text stages to include the required empty items array", () => {
+    expect(roomGenerationSystemInstruction).toContain("items: []");
   });
 });
