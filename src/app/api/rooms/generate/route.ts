@@ -71,9 +71,9 @@ export async function POST(request: NextRequest) {
       { error: "Sign in as a teacher to generate a room." },
       { status: 401 },
     );
-  const rate = await durableRateLimit(`generation:${teacherId}`, 12, 3600);
-  if (!rate.allowed) return NextResponse.json({ error: "Too many generation requests. Please retry later.", retryable: true }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
   const config = groqConfiguration(process.env);
+  const rate = await durableRateLimit(`generation:${teacherId}`, config.perTeacherGenerationHourlyLimit, 3600);
+  if (!rate.allowed) return NextResponse.json({ error: "Too many generation requests. Please retry later.", retryable: true }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
   if (!config.configured) {
     await auditGeneration(
       teacherId,

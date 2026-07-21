@@ -15,6 +15,7 @@ export function groqConfiguration(environment) {
     missing: environment.GROQ_API_KEY?.trim() ? [] : ["GROQ_API_KEY"],
     model,
     perStudentHourlyLimit: positiveInteger(environment.AI_MAX_REQUESTS_PER_STUDENT_PER_HOUR, 10),
+    perTeacherGenerationHourlyLimit: positiveInteger(environment.AI_MAX_ROOM_GENERATIONS_PER_TEACHER_PER_HOUR, 50),
     globalPerMinuteLimit: positiveInteger(environment.AI_MAX_REQUESTS_PER_MINUTE, 30),
   };
 }

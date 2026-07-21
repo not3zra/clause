@@ -6,7 +6,7 @@ Clause uses Groq only from server-side routes. The browser never receives `GROQ_
 
 - Provider: Groq
 - Model: `openai/gpt-oss-20b`
-- App limits: 10 AI requests per student per hour and 30 requests per minute globally
+- App limits: 10 AI requests per student per hour, 50 room generations per teacher per hour, and 30 requests per minute globally
 - Platform budget: stay within the Groq free-tier limits; review the current account limits before a demo
 - Fallback: deterministic mission feedback remains available when AI is unavailable or rate-limited
 
