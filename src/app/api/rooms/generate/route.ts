@@ -6,7 +6,7 @@ import {
   groqFailedGenerationText,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
-  providerStageCountSchema,
+  providerResponseFormat,
   roomGenerationSystemInstruction,
 } from "@/lib/room-generation";
 import { groqConfiguration } from "../../../../../scripts/groq-config.mjs";
@@ -96,64 +96,6 @@ export async function POST(request: NextRequest) {
       { status: 503 },
     );
   }
-  const stageSchema = {
-    type: "object",
-    additionalProperties: false,
-    required: [
-      "ordinal",
-      "title",
-      "prompt",
-      "rule",
-      "token",
-      "itemType",
-      "acceptedAnswers",
-      "rubric",
-      "hints",
-      "items",
-    ],
-    properties: {
-      ordinal: { type: "integer", minimum: 1 },
-      title: { type: "string", minLength: 1 },
-      prompt: { type: "string", minLength: 1 },
-      rule: { type: "string", minLength: 1 },
-      token: { type: "string", minLength: 1, maxLength: 32 },
-      itemType: { type: "string", enum: ["deterministic", "free_text"] },
-      acceptedAnswers: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
-      rubric: { type: "string", minLength: 1 },
-      hints: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
-      items: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["prompt", "acceptedAnswers"],
-          properties: {
-            prompt: { type: "string", minLength: 1 },
-            acceptedAnswers: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
-          },
-        },
-      },
-    },
-  };
-  const schema = {
-    type: "object",
-    additionalProperties: false,
-    required: ["title", "story", "grade", "difficulty", "stages"],
-    properties: {
-      title: { type: "string", minLength: 1 },
-      story: { type: "string", minLength: 1 },
-      grade: { type: "integer" },
-      difficulty: {
-        type: "string",
-        enum: ["supported", "standard", "stretch"],
-      },
-      stages: {
-        type: "array",
-        ...providerStageCountSchema(),
-        items: stageSchema,
-      },
-    },
-  };
   let timedOut = false;
   try {
     let repairErrors: string[] = [];
@@ -188,12 +130,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         text: {
-          format: {
-            type: "json_schema",
-            name: "room_draft",
-            strict: true,
-            schema,
-          },
+          format: providerResponseFormat(),
         },
       }),
       signal: controller.signal,
