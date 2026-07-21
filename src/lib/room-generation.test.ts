@@ -7,6 +7,10 @@ describe("generated room validation", () => {
   it("accepts a safe, answer-keyed structured draft", () => expect(validateGeneratedRoomDraft(valid, 3)).toMatchObject({ ok: true }));
   it("rejects malformed stage counts and invalid answer keys", () => expect(validateGeneratedRoomDraft({ ...valid, stages: [{ ...valid.stages[0], acceptedAnswers: [] }] }, 3)).toMatchObject({ ok: false, errors: expect.arrayContaining(["Expected 3 stages.", "Stage 1 needs an accepted answer."]) }));
   it("rejects unsafe and ambiguous generated content", () => expect(validateGeneratedRoomDraft({ ...valid, story: "Threaten the pupil to win.", stages: valid.stages.map((stage, index) => index ? stage : { ...stage, rubric: "It depends." }) }, 3)).toMatchObject({ ok: false, errors: expect.arrayContaining(["Generated content is not age-appropriate.", "Stage 1 has an ambiguous rubric."]) }));
+  it("rejects mismatched exercise shapes and a detective draft without detective content", () => {
+    const deterministic = { ...valid, stages: valid.stages.map((stage, index) => index ? stage : { ...stage, itemType: "deterministic" as const, items: [{ prompt: "The file is ready.", acceptedAnswers: ["Maybe"] }] }) };
+    expect(validateGeneratedRoomDraft(deterministic, 3, "Detective Office")).toMatchObject({ ok: false, errors: expect.arrayContaining(["Deterministic stage 1 must use Agrees or Needs revision answer keys.", "Detective Office drafts need detective-specific story and clue content."]) });
+  });
   it("parses only a valid structured Groq response", () => {
     expect(parseGeneratedRoomDraft(JSON.stringify(valid), 3)).toMatchObject({ ok: true });
     expect(parseGeneratedRoomDraft(`\`\`\`json\n${JSON.stringify(valid)}\n\`\`\``, 3)).toMatchObject({ ok: true });

@@ -27,7 +27,7 @@ export async function resolveStudentSession(token: string | undefined) {
     .maybeSingle();
   const { data: attempt } = await client
     .from("mission_attempts")
-    .select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results, room_version_id")
+    .select("id, current_stage, recovered_tokens, completed_at, hints_used, stage_results, room_version_id, score, elapsed_seconds")
     .eq("student_assignment_id", session.student_assignment_id)
     .maybeSingle();
   return attempt && enrolment ? { assignmentId: enrolment.assignment_id, studentAssignmentId: session.student_assignment_id, attempt } : null;
