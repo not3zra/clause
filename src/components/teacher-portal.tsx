@@ -132,13 +132,22 @@ export function TeacherPortal() {
   }, [supabase]);
 
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setTeacherEmail(data.user.email ?? null);
-        void loadClasses(data.user.id);
+    let active = true;
+    const restore = (session: { user: { id: string; email?: string | null } } | null) => {
+      if (!active) return;
+      if (session?.user) {
+        setTeacherEmail(session.user.email ?? null);
+        void loadClasses(session.user.id);
         void loadResults();
+      } else {
+        setTeacherId(null);
+        setTeacherEmail(null);
       }
-    }).finally(() => setSessionResolved(true));
+      setSessionResolved(true);
+    };
+    void supabase.auth.getSession().then(({ data }) => restore(data.session)).catch(() => restore(null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => restore(session));
+    return () => { active = false; subscription.unsubscribe(); };
   }, [supabase, loadClasses, loadResults]);
 
   const submitAuth = async (event: FormEvent) => {
