@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   groqOutputText,
   generationRepairInstruction,
+  groqFailedGenerationText,
   isRoomGenerationInput,
   parseGeneratedRoomDraft,
   providerStageCountSchema,
@@ -200,6 +201,18 @@ export async function POST(request: NextRequest) {
       clearTimeout(timeout);
       const data = await response.json().catch(() => null);
       if (!response.ok) {
+        const failedDraft = groqFailedGenerationText(data);
+        if (response.status === 400 && failedDraft) {
+          const result = parseGeneratedRoomDraft(failedDraft, input.stageCount, input.theme);
+          if (result.ok) {
+            await auditGeneration(teacherId, config.model, input.stageCount, "validated");
+            return NextResponse.json({ draft: result.value, source: "ai", validation: "recovered" });
+          }
+          repairErrors = result.errors;
+          if (generationAttempt === 0) continue;
+          await auditGeneration(teacherId, config.model, input.stageCount, "rejected", repairErrors);
+          return NextResponse.json({ error: "Generated draft needs revision.", errors: repairErrors, retryable: true }, { status: 422 });
+        }
         const providerMessage = typeof (data as { error?: { message?: unknown } } | null)?.error?.message === "string"
           ? (data as { error: { message: string } }).error.message
           : undefined;

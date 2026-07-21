@@ -58,6 +58,11 @@ export function groqOutputText(data: unknown) {
   return "";
 }
 
+export function groqFailedGenerationText(data: unknown) {
+  const failed = (data as { error?: { failed_generation?: unknown } } | null)?.error?.failed_generation;
+  return typeof failed === "string" ? failed : "";
+}
+
 export function providerStageCountSchema() {
   // Let our validator inspect partial drafts and give the model a targeted repair
   // instruction. Groq otherwise rejects a short draft before we can retry it.
